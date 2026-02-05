@@ -65,6 +65,7 @@ export const useStore = create<AppState>((set, get) => ({
   stats: null,
   activeWallet: null,
   categories: [],
+  goals: [],
 
   init: async () => {
     try {
@@ -96,19 +97,20 @@ export const useStore = create<AppState>((set, get) => ({
 
   logout: () => {
     api.logout();
-    set({ user: null, isLoggedIn: false, wallets: [], transactions: [], stats: null, activeWallet: null, categories: [] });
+    set({ user: null, isLoggedIn: false, wallets: [], transactions: [], stats: null, activeWallet: null, categories: [], goals: [] });
   },
 
   loadData: async () => {
     try {
-      const [wallets, transactions, stats, categories] = await Promise.all([
+      const [wallets, transactions, stats, categories, goals] = await Promise.all([
         api.getWallets(),
         api.getTransactions(),
         api.getStats(),
         api.getCategories(),
+        api.getGoals(),
       ]);
       const activeWallet = wallets[0] || null;
-      set({ wallets, transactions, stats, activeWallet, categories });
+      set({ wallets, transactions, stats, activeWallet, categories, goals });
     } catch (e) {
       console.log('Load data error:', e);
     }
@@ -140,5 +142,26 @@ export const useStore = create<AppState>((set, get) => ({
   deleteTransaction: async (id) => {
     await api.deleteTransaction(id);
     await get().loadData();
+  },
+
+  // Goals
+  loadGoals: async () => {
+    const goals = await api.getGoals();
+    set({ goals });
+  },
+
+  addGoal: async (data) => {
+    await api.createGoal(data);
+    await get().loadGoals();
+  },
+
+  contributeToGoal: async (id, amount) => {
+    await api.contributeToGoal(id, amount);
+    await get().loadGoals();
+  },
+
+  deleteGoal: async (id) => {
+    await api.deleteGoal(id);
+    await get().loadGoals();
   },
 }));
