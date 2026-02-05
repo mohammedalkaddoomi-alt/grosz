@@ -1,8 +1,9 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, StyleSheet, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../../src/constants/theme';
+import { COLORS, SPACING, GRADIENTS } from '../../src/constants/theme';
 import { PL } from '../../src/constants/polish';
 
 export default function TabLayout() {
@@ -12,17 +13,18 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarInactiveTintColor: COLORS.textMuted,
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarItemStyle: styles.tabBarItem,
+        tabBarShowLabel: true,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: PL.dashboard,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="home" color={color} focused={focused} />
           ),
         }}
       />
@@ -30,8 +32,8 @@ export default function TabLayout() {
         name="wallets"
         options={{
           title: PL.wallets,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="wallet" color={color} focused={focused} />
           ),
         }}
       />
@@ -39,8 +41,8 @@ export default function TabLayout() {
         name="goals"
         options={{
           title: PL.goals,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flag-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="flag" color={color} focused={focused} />
           ),
         }}
       />
@@ -48,8 +50,8 @@ export default function TabLayout() {
         name="assistant"
         options={{
           title: PL.assistant,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="sparkles" color={color} focused={focused} gradient={GRADIENTS.primary} />
           ),
         }}
       />
@@ -57,8 +59,8 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: PL.settings,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="settings" color={color} focused={focused} />
           ),
         }}
       />
@@ -66,20 +68,56 @@ export default function TabLayout() {
   );
 }
 
+const TabIcon = ({ name, color, focused, gradient }: { name: string; color: string; focused: boolean; gradient?: string[] }) => {
+  if (focused && gradient) {
+    return (
+      <LinearGradient colors={gradient} style={styles.activeIconBg}>
+        <Ionicons name={name as any} size={22} color={COLORS.white} />
+      </LinearGradient>
+    );
+  }
+  
+  if (focused) {
+    return (
+      <View style={[styles.activeIconBg, { backgroundColor: `${COLORS.primary}15` }]}>
+        <Ionicons name={name as any} size={22} color={COLORS.primary} />
+      </View>
+    );
+  }
+  
+  return <Ionicons name={`${name}-outline` as any} size={22} color={color} />;
+};
+
 const styles = StyleSheet.create({
   tabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    height: Platform.OS === 'ios' ? 88 : 64,
-    paddingTop: SPACING.xs,
+    borderTopWidth: 0,
+    height: Platform.OS === 'ios' ? 88 : 70,
+    paddingTop: SPACING.sm,
     paddingBottom: Platform.OS === 'ios' ? 28 : SPACING.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 20,
   },
   tabBarLabel: {
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
+    marginTop: 4,
   },
   tabBarItem: {
     paddingTop: 4,
+  },
+  activeIconBg: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
