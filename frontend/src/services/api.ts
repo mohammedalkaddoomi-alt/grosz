@@ -92,6 +92,20 @@ class Api {
     return this.fetch<any>('/dashboard/stats');
   }
 
+  // Categories
+  async getCategories(type?: 'income' | 'expense') {
+    const params = type ? `?type=${type}` : '';
+    return this.fetch<any[]>(`/categories${params}`);
+  }
+
+  async createCategory(data: { name: string; emoji: string; type: 'income' | 'expense' }) {
+    return this.fetch<any>('/categories', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async deleteCategory(id: string) {
+    return this.fetch<any>(`/categories/${id}`, { method: 'DELETE' });
+  }
+
   // AI
   async chat(message: string) {
     return this.fetch<any>('/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
