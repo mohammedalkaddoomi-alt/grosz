@@ -47,6 +47,7 @@ export const useStore = create<AppState>((set, get) => ({
   transactions: [],
   stats: null,
   activeWallet: null,
+  categories: [],
 
   init: async () => {
     try {
@@ -78,21 +79,38 @@ export const useStore = create<AppState>((set, get) => ({
 
   logout: () => {
     api.logout();
-    set({ user: null, isLoggedIn: false, wallets: [], transactions: [], stats: null, activeWallet: null });
+    set({ user: null, isLoggedIn: false, wallets: [], transactions: [], stats: null, activeWallet: null, categories: [] });
   },
 
   loadData: async () => {
     try {
-      const [wallets, transactions, stats] = await Promise.all([
+      const [wallets, transactions, stats, categories] = await Promise.all([
         api.getWallets(),
         api.getTransactions(),
         api.getStats(),
+        api.getCategories(),
       ]);
       const activeWallet = wallets[0] || null;
-      set({ wallets, transactions, stats, activeWallet });
+      set({ wallets, transactions, stats, activeWallet, categories });
     } catch (e) {
       console.log('Load data error:', e);
     }
+  },
+
+  loadCategories: async (type) => {
+    const categories = await api.getCategories(type);
+    set({ categories });
+    return categories;
+  },
+
+  addCategory: async (data) => {
+    await api.createCategory(data);
+    await get().loadCategories();
+  },
+
+  deleteCategory: async (id) => {
+    await api.deleteCategory(id);
+    await get().loadCategories();
   },
 
   setActiveWallet: (wallet) => set({ activeWallet: wallet }),
