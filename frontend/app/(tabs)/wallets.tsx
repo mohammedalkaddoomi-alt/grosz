@@ -98,9 +98,12 @@ export default function WalletsScreen() {
     setIsLoading(true);
     try {
       await createTransaction({ wallet_id: selectedWallet.id, amount: parseFloat(txAmount), type: txType, category: txCategory, emoji: txEmoji, note: txNote || undefined });
+      // Refresh data
+      await fetchWallets();
       await fetchTransactions(selectedWallet.id);
       setShowTransactionModal(false);
       setTxAmount(''); setTxNote(''); setTxType('expense'); setTxCategory(CATEGORIES[0].name); setTxEmoji(CATEGORIES[0].emoji);
+      Alert.alert('Sukces', 'Transakcja dodana!');
     } catch (err: any) { Alert.alert('Błąd', err.message); }
     finally { setIsLoading(false); }
   };
