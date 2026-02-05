@@ -105,6 +105,19 @@ class TransactionUpdate(BaseModel):
     emoji: Optional[str] = None
     note: Optional[str] = None
 
+# Category Models
+class CategoryCreate(BaseModel):
+    name: str
+    emoji: str
+    type: str  # "income" or "expense"
+
+class CategoryResponse(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    emoji: str
+    type: str
+
 # Goal Models
 class GoalCreate(BaseModel):
     name: str
