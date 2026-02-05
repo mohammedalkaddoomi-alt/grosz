@@ -32,16 +32,3 @@ export const Gradients = {
   blue: ['#3B82F6', '#06B6D4'],
   orange: ['#F59E0B', '#FBBF24'],
 };
-
-// Categories with colors
-export const Categories = [
-  { name: 'Jedzenie', emoji: '🍔', color: '#F43F5E' },
-  { name: 'Transport', emoji: '🚗', color: '#3B82F6' },
-  { name: 'Zakupy', emoji: '🛒', color: '#8B5CF6' },
-  { name: 'Rozrywka', emoji: '🎬', color: '#F59E0B' },
-  { name: 'Rachunki', emoji: '📄', color: '#6366F1' },
-  { name: 'Zdrowie', emoji: '💊', color: '#EC4899' },
-  { name: 'Wynagrodzenie', emoji: '💰', color: '#10B981' },
-  { name: 'Prezent', emoji: '🎁', color: '#F472B6' },
-  { name: 'Inne', emoji: '📌', color: '#64748B' },
-];
