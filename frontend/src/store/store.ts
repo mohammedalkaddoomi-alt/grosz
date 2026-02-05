@@ -3,6 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
 import type { User, Wallet, Transaction } from '../types';
 
+interface Category {
+  id: string;
+  name: string;
+  emoji: string;
+  type: 'income' | 'expense';
+  is_default: boolean;
+}
+
 interface AppState {
   // Auth
   user: User | null;
@@ -14,6 +22,7 @@ interface AppState {
   transactions: Transaction[];
   stats: any;
   activeWallet: Wallet | null;
+  categories: Category[];
   
   // Actions
   init: () => Promise<void>;
@@ -22,6 +31,9 @@ interface AppState {
   logout: () => void;
   
   loadData: () => Promise<void>;
+  loadCategories: (type?: 'income' | 'expense') => Promise<Category[]>;
+  addCategory: (data: { name: string; emoji: string; type: 'income' | 'expense' }) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   setActiveWallet: (wallet: Wallet) => void;
   addTransaction: (data: any) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
