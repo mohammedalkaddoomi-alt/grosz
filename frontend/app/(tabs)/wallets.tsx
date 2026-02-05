@@ -44,9 +44,20 @@ export default function WalletsScreen() {
   const [txNote, setTxNote] = useState('');
 
   useEffect(() => {
-    fetchWallets();
-    fetchTransactions();
+    const loadData = async () => {
+      await fetchWallets();
+      await fetchTransactions();
+    };
+    loadData();
   }, []);
+
+  // Auto-select first wallet if none selected
+  useEffect(() => {
+    if (wallets.length > 0 && !selectedWallet) {
+      selectWallet(wallets[0]);
+      fetchTransactions(wallets[0].id);
+    }
+  }, [wallets, selectedWallet]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
