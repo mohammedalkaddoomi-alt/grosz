@@ -87,6 +87,23 @@ class Api {
     return this.fetch<any>(`/transactions/${id}`, { method: 'DELETE' });
   }
 
+  // Goals
+  async getGoals() {
+    return this.fetch<any[]>('/goals');
+  }
+
+  async createGoal(data: { name: string; target_amount: number; emoji: string }) {
+    return this.fetch<any>('/goals', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async contributeToGoal(id: string, amount: number) {
+    return this.fetch<any>(`/goals/${id}/contribute`, { method: 'POST', body: JSON.stringify({ amount }) });
+  }
+
+  async deleteGoal(id: string) {
+    return this.fetch<any>(`/goals/${id}`, { method: 'DELETE' });
+  }
+
   // Dashboard
   async getStats() {
     return this.fetch<any>('/dashboard/stats');
