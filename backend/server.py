@@ -537,7 +537,7 @@ Ostatnie transakcje (20):
         goals_summary = ""
         if goals:
             goals_list = [f"- {g['emoji']} {g['name']}: {g['current_amount']:.2f}/{g['target_amount']:.2f} PLN ({int(g['current_amount']/g['target_amount']*100) if g['target_amount'] > 0 else 0}%)" for g in goals]
-            goals_summary = f"\nCele oszczędnościowe:\n" + "\n".join(goals_list)
+            goals_summary = "\nCele oszczędnościowe:\n" + "\n".join(goals_list)
         
         system_message = f"""Jesteś Cenny Grosz - przyjaznym i profesjonalnym asystentem finansowym po polsku.
 
