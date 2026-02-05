@@ -111,11 +111,14 @@ backend:
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Tested via curl - registration works and creates default wallet"
+      - working: true
+        agent: "testing"
+        comment: "✅ Comprehensive test passed: User registration works correctly, creates JWT token, returns user data with all required fields (id, email, name, created_at), and automatically creates default wallet 'Mój portfel'. Authentication flow verified."
 
   - task: "User Login API"
     implemented: true
