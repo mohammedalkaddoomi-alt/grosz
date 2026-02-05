@@ -429,6 +429,80 @@ async def delete_transaction(transaction_id: str, current_user: dict = Depends(g
     await db.transactions.delete_one({"id": transaction_id})
     return {"message": "Transakcja usunięta"}
 
+# ================== CATEGORY ROUTES ==================
+
+# Default categories
+DEFAULT_EXPENSE_CATEGORIES = [
+    {"name": "Jedzenie", "emoji": "🍔"},
+    {"name": "Transport", "emoji": "🚗"},
+    {"name": "Zakupy", "emoji": "🛒"},
+    {"name": "Rozrywka", "emoji": "🎬"},
+    {"name": "Rachunki", "emoji": "📄"},
+    {"name": "Zdrowie", "emoji": "💊"},
+    {"name": "Inne", "emoji": "📌"},
+]
+
+DEFAULT_INCOME_CATEGORIES = [
+    {"name": "Wynagrodzenie", "emoji": "💰"},
+    {"name": "Freelance", "emoji": "💻"},
+    {"name": "Prezent", "emoji": "🎁"},
+    {"name": "Zwrot", "emoji": "↩️"},
+    {"name": "Inwestycje", "emoji": "📈"},
+    {"name": "Inne", "emoji": "💵"},
+]
+
+@api_router.get("/categories")
+async def get_categories(type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get user's categories + default ones"""
+    user_id = current_user["id"]
+    
+    # Get user's custom categories
+    query = {"user_id": user_id}
+    if type:
+        query["type"] = type
+    
+    custom_categories = await db.categories.find(query).to_list(100)
+    
+    # Prepare response with defaults + custom
+    if type == "expense":
+        defaults = [{"id": f"default-expense-{i}", "name": c["name"], "emoji": c["emoji"], "type": "expense", "is_default": True} for i, c in enumerate(DEFAULT_EXPENSE_CATEGORIES)]
+    elif type == "income":
+        defaults = [{"id": f"default-income-{i}", "name": c["name"], "emoji": c["emoji"], "type": "income", "is_default": True} for i, c in enumerate(DEFAULT_INCOME_CATEGORIES)]
+    else:
+        defaults = [{"id": f"default-expense-{i}", "name": c["name"], "emoji": c["emoji"], "type": "expense", "is_default": True} for i, c in enumerate(DEFAULT_EXPENSE_CATEGORIES)]
+        defaults += [{"id": f"default-income-{i}", "name": c["name"], "emoji": c["emoji"], "type": "income", "is_default": True} for i, c in enumerate(DEFAULT_INCOME_CATEGORIES)]
+    
+    custom = [{"id": c["id"], "name": c["name"], "emoji": c["emoji"], "type": c["type"], "is_default": False} for c in custom_categories]
+    
+    return defaults + custom
+
+@api_router.post("/categories")
+async def create_category(category_data: CategoryCreate, current_user: dict = Depends(get_current_user)):
+    """Create a custom category"""
+    if category_data.type not in ["income", "expense"]:
+        raise HTTPException(status_code=400, detail="Typ musi być 'income' lub 'expense'")
+    
+    category = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user["id"],
+        "name": category_data.name,
+        "emoji": category_data.emoji,
+        "type": category_data.type,
+        "created_at": datetime.utcnow()
+    }
+    await db.categories.insert_one(category)
+    return {"id": category["id"], "name": category["name"], "emoji": category["emoji"], "type": category["type"], "is_default": False}
+
+@api_router.delete("/categories/{category_id}")
+async def delete_category(category_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a custom category"""
+    category = await db.categories.find_one({"id": category_id, "user_id": current_user["id"]})
+    if not category:
+        raise HTTPException(status_code=404, detail="Kategoria nie znaleziona")
+    
+    await db.categories.delete_one({"id": category_id})
+    return {"message": "Kategoria usunięta"}
+
 # ================== GOAL ROUTES ==================
 
 @api_router.post("/goals", response_model=GoalResponse)
