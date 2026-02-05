@@ -1,8 +1,8 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../../src/constants/theme';
+import { Colors, Shadows } from '../../src/constants/theme';
 
 export default function TabLayout() {
   return (
@@ -14,56 +14,104 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: Colors.card,
           borderTopWidth: 0,
-          height: Platform.OS === 'ios' ? 88 : 65,
-          paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
-          elevation: 0,
+          height: Platform.OS === 'ios' ? 88 : 70,
+          paddingTop: 10,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+          ...Shadows.medium,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { 
+          fontSize: 11, 
+          fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarIconStyle: {
+          marginBottom: -4,
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Główna',
-          tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? styles.activeIcon : undefined}>
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
-        name="transactions"
+        name="wallets"
         options={{
-          title: 'Historia',
-          tabBarIcon: ({ color }) => <Ionicons name="list" size={24} color={color} />,
+          title: 'Portfele',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? styles.activeIcon : undefined}>
+              <Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={24} color={color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="add"
         options={{
           title: 'Dodaj',
-          tabBarIcon: ({ color }) => <Ionicons name="add-circle" size={32} color={Colors.primary} />,
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.addButton}>
+              <Ionicons name="add" size={28} color={Colors.white} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="goals"
         options={{
           title: 'Cele',
-          tabBarIcon: ({ color }) => <Ionicons name="flag" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Asystent',
-          tabBarIcon: ({ color }) => <Ionicons name="chatbubble" size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? styles.activeIcon : undefined}>
+              <Ionicons name={focused ? 'flag' : 'flag-outline'} size={24} color={color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? styles.activeIcon : undefined}>
+              <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="transactions"
+        options={{
+          href: null, // Hide from tab bar but keep accessible
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          href: null, // Hide from tab bar but keep accessible
         }}
       />
     </Tabs>
   );
 }
+
+const styles = {
+  activeIcon: {
+    transform: [{ scale: 1.1 }],
+  },
+  addButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: 20,
+    ...Shadows.medium,
+  },
+};

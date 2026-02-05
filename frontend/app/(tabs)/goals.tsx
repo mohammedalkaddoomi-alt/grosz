@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/store';
-import { Colors, Gradients } from '../../src/constants/theme';
+import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
 
 const GOAL_EMOJIS = ['🎯', '🏠', '🚗', '✈️', '💻', '📱', '🎓', '💍', '🏖️', '🎸', '🎮', '📷', '👶', '🐕', '💪', '🏋️', '🚀', '💎', '🎁', '🏦'];
 
@@ -157,6 +157,7 @@ export default function Goals() {
                   style={styles.goalCard}
                   onPress={() => openContributeModal(goal)}
                   onLongPress={() => handleDeleteGoal(goal)}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.goalHeader}>
                     <View style={styles.goalIcon}>
@@ -185,7 +186,7 @@ export default function Goals() {
                       {remaining > 0 ? `Pozostało: ${formatMoney(remaining)}` : 'Cel osiągnięty! 🎉'}
                     </Text>
                     <View style={styles.contributeBtn}>
-                      <Ionicons name="add-circle" size={16} color={Colors.primary} />
+                      <Ionicons name="add-circle" size={18} color={Colors.primary} />
                       <Text style={styles.contributeBtnText}>Wpłać</Text>
                     </View>
                   </View>
@@ -204,6 +205,7 @@ export default function Goals() {
                 key={goal.id}
                 style={[styles.goalCard, styles.goalCardCompleted]}
                 onLongPress={() => handleDeleteGoal(goal)}
+                activeOpacity={0.7}
               >
                 <View style={styles.goalHeader}>
                   <View style={[styles.goalIcon, styles.goalIconCompleted]}>
@@ -227,7 +229,7 @@ export default function Goals() {
               <Ionicons name="flag" size={48} color={Colors.primary} />
             </View>
             <Text style={styles.emptyTitle}>Brak celów</Text>
-            <Text style={styles.emptyText}>Stwórz swój pierwszy cel oszczędnościowy!</Text>
+            <Text style={styles.emptyText}>Stwórz swój pierwszy cel oszczędnościowy i zacznij realizować marzenia!</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewGoalModal(true)}>
               <LinearGradient colors={Gradients.primary} style={styles.emptyBtnGradient}>
                 <Ionicons name="add" size={20} color={Colors.white} />
@@ -236,6 +238,8 @@ export default function Goals() {
             </TouchableOpacity>
           </View>
         )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* New Goal Modal */}
@@ -268,7 +272,7 @@ export default function Goals() {
               keyboardType="decimal-pad"
             />
 
-            <Text style={styles.modalLabel}>Ikona</Text>
+            <Text style={styles.modalLabel}>Wybierz emoji</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiScroll}>
               {GOAL_EMOJIS.map((emoji) => (
                 <TouchableOpacity
@@ -295,31 +299,31 @@ export default function Goals() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Wpłać na cel 💰</Text>
-              <TouchableOpacity onPress={() => setShowContributeModal(false)}>
+              <View style={styles.modalTitleRow}>
+                <Text style={styles.modalGoalEmoji}>{selectedGoal?.emoji}</Text>
+                <Text style={styles.modalTitle}>{selectedGoal?.name}</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setShowContributeModal(false); setContributeAmount(''); }}>
                 <Ionicons name="close" size={24} color={Colors.text} />
               </TouchableOpacity>
             </View>
 
-            {selectedGoal && (
-              <View style={styles.contributeGoalInfo}>
-                <Text style={styles.contributeGoalEmoji}>{selectedGoal.emoji}</Text>
-                <Text style={styles.contributeGoalName}>{selectedGoal.name}</Text>
-                <Text style={styles.contributeGoalProgress}>
-                  {formatMoney(selectedGoal.current_amount)} / {formatMoney(selectedGoal.target_amount)}
-                </Text>
-                <View style={styles.contributeProgressBar}>
-                  <LinearGradient
-                    colors={Gradients.primary}
-                    style={[styles.contributeProgressFill, { 
-                      width: `${Math.min((selectedGoal.current_amount / selectedGoal.target_amount) * 100, 100)}%` 
-                    }]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  />
-                </View>
+            <View style={styles.goalStats}>
+              <View style={styles.goalStatItem}>
+                <Text style={styles.goalStatLabel}>Zebrano</Text>
+                <Text style={styles.goalStatValue}>{formatMoney(selectedGoal?.current_amount || 0)}</Text>
               </View>
-            )}
+              <View style={styles.goalStatItem}>
+                <Text style={styles.goalStatLabel}>Cel</Text>
+                <Text style={styles.goalStatValue}>{formatMoney(selectedGoal?.target_amount || 0)}</Text>
+              </View>
+              <View style={styles.goalStatItem}>
+                <Text style={styles.goalStatLabel}>Pozostało</Text>
+                <Text style={[styles.goalStatValue, styles.goalStatRemaining]}>
+                  {formatMoney((selectedGoal?.target_amount || 0) - (selectedGoal?.current_amount || 0))}
+                </Text>
+              </View>
+            </View>
 
             <Text style={styles.modalLabel}>Kwota wpłaty (zł)</Text>
             <TextInput
@@ -345,78 +349,148 @@ export default function Goals() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
-  title: { fontSize: 24, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: 14, color: Colors.textLight, marginTop: 2 },
-  addBtn: { borderRadius: 14, overflow: 'hidden' },
-  addBtnGradient: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { padding: 20, paddingTop: 0, paddingBottom: 100 },
-  
-  // Summary card
-  summaryCard: { borderRadius: 20, padding: 20, marginBottom: 24 },
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: Spacing.xl, 
+    paddingVertical: Spacing.lg,
+  },
+  title: { fontSize: 28, fontWeight: '700', color: Colors.text },
+  subtitle: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
+  addBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', ...Shadows.medium },
+  addBtnGradient: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingHorizontal: Spacing.xl },
+  summaryCard: { 
+    padding: Spacing.xxl, 
+    borderRadius: BorderRadius.xxl, 
+    marginBottom: Spacing.xl,
+    ...Shadows.large,
+  },
   summaryRow: { flexDirection: 'row', alignItems: 'center' },
-  summaryItem: { flex: 1 },
+  summaryItem: { flex: 1, alignItems: 'center' },
+  summaryDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.3)' },
   summaryLabel: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
   summaryAmount: { fontSize: 22, fontWeight: '700', color: Colors.white, marginTop: 4 },
-  summaryDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 16 },
-  overallProgress: { marginTop: 16 },
-  overallProgressBar: { height: 8, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 4, overflow: 'hidden' },
-  overallProgressFill: { height: '100%', backgroundColor: Colors.white, borderRadius: 4 },
-  overallProgressText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 8, textAlign: 'center' },
-  
-  // Section
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: 12, textTransform: 'uppercase' },
-  
-  // Goal card
-  goalCard: { backgroundColor: Colors.card, borderRadius: 16, padding: 16, marginBottom: 12 },
+  overallProgress: { marginTop: Spacing.xl },
+  overallProgressBar: { 
+    height: 10, 
+    backgroundColor: 'rgba(255,255,255,0.3)', 
+    borderRadius: BorderRadius.full, 
+    overflow: 'hidden',
+  },
+  overallProgressFill: { height: '100%', backgroundColor: Colors.white, borderRadius: BorderRadius.full },
+  overallProgressText: { fontSize: 13, color: 'rgba(255,255,255,0.9)', marginTop: Spacing.sm, textAlign: 'center' },
+  section: { marginBottom: Spacing.xl },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: Spacing.md },
+  goalCard: { 
+    backgroundColor: Colors.card, 
+    borderRadius: BorderRadius.xl, 
+    padding: Spacing.lg, 
+    marginBottom: Spacing.md,
+    ...Shadows.small,
+  },
   goalCardCompleted: { opacity: 0.8 },
-  goalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  goalIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: Colors.primary + '15', justifyContent: 'center', alignItems: 'center' },
-  goalIconCompleted: { backgroundColor: Colors.income + '15' },
-  goalEmoji: { fontSize: 24 },
-  goalInfo: { flex: 1, marginLeft: 12 },
-  goalName: { fontSize: 16, fontWeight: '600', color: Colors.text },
-  goalAmounts: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
-  goalAmountsCompleted: { fontSize: 13, color: Colors.income, marginTop: 2, fontWeight: '600' },
-  goalPercent: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.primary + '15', justifyContent: 'center', alignItems: 'center' },
+  goalHeader: { flexDirection: 'row', alignItems: 'center' },
+  goalIcon: { 
+    width: 52, 
+    height: 52, 
+    borderRadius: BorderRadius.lg, 
+    backgroundColor: Colors.primary + '15', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+  },
+  goalIconCompleted: { backgroundColor: Colors.incomeLight },
+  goalEmoji: { fontSize: 26 },
+  goalInfo: { flex: 1, marginLeft: Spacing.md },
+  goalName: { fontSize: 17, fontWeight: '600', color: Colors.text },
+  goalAmounts: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
+  goalAmountsCompleted: { fontSize: 14, color: Colors.income, marginTop: 4, fontWeight: '600' },
+  goalPercent: { 
+    backgroundColor: Colors.primary + '15', 
+    paddingHorizontal: Spacing.md, 
+    paddingVertical: Spacing.sm, 
+    borderRadius: BorderRadius.full,
+  },
   goalPercentText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  progressBar: { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 12 },
-  progressFill: { height: '100%', borderRadius: 4 },
-  goalFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressBar: { 
+    height: 8, 
+    backgroundColor: Colors.backgroundDark, 
+    borderRadius: BorderRadius.full, 
+    marginTop: Spacing.md, 
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', borderRadius: BorderRadius.full },
+  goalFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.md },
   goalRemaining: { fontSize: 13, color: Colors.textLight },
-  contributeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary + '15', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  contributeBtnText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
-  
-  // Empty state
-  emptyState: { alignItems: 'center', paddingVertical: 60 },
-  emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
-  emptyText: { fontSize: 14, color: Colors.textLight, marginTop: 4, marginBottom: 24 },
-  emptyBtn: { borderRadius: 14, overflow: 'hidden' },
-  emptyBtnGradient: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 24, gap: 8 },
+  contributeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  contributeBtnText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
+  emptyState: { 
+    alignItems: 'center', 
+    paddingVertical: Spacing.xxxl * 2,
+    paddingHorizontal: Spacing.xxl,
+  },
+  emptyIcon: { 
+    width: 96, 
+    height: 96, 
+    borderRadius: BorderRadius.full, 
+    backgroundColor: Colors.primary + '15', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  emptyTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
+  emptyText: { fontSize: 15, color: Colors.textLight, marginTop: Spacing.sm, textAlign: 'center', lineHeight: 22 },
+  emptyBtn: { marginTop: Spacing.xl, borderRadius: BorderRadius.full, overflow: 'hidden', ...Shadows.medium },
+  emptyBtnGradient: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.xxl, paddingVertical: Spacing.md },
   emptyBtnText: { fontSize: 16, fontWeight: '600', color: Colors.white },
   
-  // Modal
+  // Modal styles
   modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: Colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
-  modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: 8, marginTop: 12 },
-  modalInput: { backgroundColor: Colors.background, borderRadius: 12, paddingHorizontal: 16, height: 52, fontSize: 16, color: Colors.text },
-  emojiScroll: { marginBottom: 16 },
-  emojiBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  modalContent: { 
+    backgroundColor: Colors.card, 
+    borderTopLeftRadius: BorderRadius.xxl, 
+    borderTopRightRadius: BorderRadius.xxl, 
+    padding: Spacing.xxl,
+    maxHeight: '85%',
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
+  modalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  modalGoalEmoji: { fontSize: 28 },
+  modalTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
+  modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg },
+  modalInput: { 
+    backgroundColor: Colors.background, 
+    borderRadius: BorderRadius.md, 
+    paddingHorizontal: Spacing.lg, 
+    height: 52, 
+    fontSize: 16, 
+    color: Colors.text,
+  },
+  emojiScroll: { marginBottom: Spacing.md },
+  emojiBtn: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: BorderRadius.md, 
+    backgroundColor: Colors.background, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: Spacing.sm,
+  },
   emojiBtnSelected: { backgroundColor: Colors.primary + '20', borderWidth: 2, borderColor: Colors.primary },
   emojiBtnText: { fontSize: 24 },
-  modalSubmitBtn: { borderRadius: 14, overflow: 'hidden', marginTop: 20 },
+  goalStats: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
+  goalStatItem: { 
+    flex: 1, 
+    backgroundColor: Colors.background, 
+    padding: Spacing.md, 
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  goalStatLabel: { fontSize: 12, color: Colors.textLight },
+  goalStatValue: { fontSize: 16, fontWeight: '700', color: Colors.text, marginTop: 4 },
+  goalStatRemaining: { color: Colors.primary },
+  modalSubmitBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', marginTop: Spacing.xl },
   modalSubmitGradient: { height: 52, justifyContent: 'center', alignItems: 'center' },
   modalSubmitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
-  
-  // Contribute modal
-  contributeGoalInfo: { alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.border, marginBottom: 16 },
-  contributeGoalEmoji: { fontSize: 48, marginBottom: 8 },
-  contributeGoalName: { fontSize: 18, fontWeight: '600', color: Colors.text },
-  contributeGoalProgress: { fontSize: 14, color: Colors.textLight, marginTop: 4, marginBottom: 12 },
-  contributeProgressBar: { width: '100%', height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden' },
-  contributeProgressFill: { height: '100%', borderRadius: 4 },
 });

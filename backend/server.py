@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -54,6 +54,11 @@ class UserResponse(BaseModel):
     name: str
     created_at: datetime
 
+class UserSearchResponse(BaseModel):
+    id: str
+    email: str
+    name: str
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -65,6 +70,12 @@ class WalletCreate(BaseModel):
     emoji: str = "💰"
     is_shared: bool = False
 
+class WalletMemberDetail(BaseModel):
+    id: str
+    name: str
+    email: str
+    joined_at: Optional[datetime] = None
+
 class WalletResponse(BaseModel):
     id: str
     name: str
@@ -73,11 +84,15 @@ class WalletResponse(BaseModel):
     is_shared: bool
     owner_id: str
     members: List[str] = []
+    members_details: List[WalletMemberDetail] = []
     created_at: datetime
 
 class WalletUpdate(BaseModel):
     name: Optional[str] = None
     emoji: Optional[str] = None
+
+class WalletInvite(BaseModel):
+    email: str
 
 # Transaction Models
 class TransactionCreate(BaseModel):
@@ -92,6 +107,7 @@ class TransactionResponse(BaseModel):
     id: str
     wallet_id: str
     user_id: str
+    user_name: Optional[str] = None
     amount: float
     type: str
     category: str
@@ -193,6 +209,31 @@ async def get_current_user(authorization: str = Header(None)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Nieprawidłowy token")
 
+# ================== HELPER FUNCTIONS ==================
+
+async def get_wallet_with_members(wallet: dict) -> dict:
+    """Enrich wallet with member details"""
+    members_details = []
+    if wallet.get("members"):
+        for member_id in wallet["members"]:
+            member = await db.users.find_one({"id": member_id})
+            if member:
+                members_details.append({
+                    "id": member["id"],
+                    "name": member["name"],
+                    "email": member["email"],
+                    "joined_at": wallet.get("member_joined", {}).get(member_id)
+                })
+    wallet["members_details"] = members_details
+    return wallet
+
+async def get_transaction_with_user(tx: dict) -> dict:
+    """Enrich transaction with user name"""
+    user = await db.users.find_one({"id": tx.get("user_id")})
+    if user:
+        tx["user_name"] = user["name"]
+    return tx
+
 # ================== AUTH ROUTES ==================
 
 @api_router.post("/auth/register", response_model=TokenResponse)
@@ -222,6 +263,7 @@ async def register(user_data: UserCreate):
         "is_shared": False,
         "owner_id": user_id,
         "members": [],
+        "member_joined": {},
         "created_at": datetime.utcnow()
     }
     await db.wallets.insert_one(wallet)
@@ -263,6 +305,23 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         created_at=current_user["created_at"]
     )
 
+# ================== USER SEARCH ROUTES ==================
+
+@api_router.get("/users/search", response_model=List[UserSearchResponse])
+async def search_users(q: str = Query(..., min_length=3), current_user: dict = Depends(get_current_user)):
+    """Search users by email or name for inviting to shared wallets"""
+    users = await db.users.find({
+        "$and": [
+            {"id": {"$ne": current_user["id"]}},  # Exclude current user
+            {"$or": [
+                {"email": {"$regex": q, "$options": "i"}},
+                {"name": {"$regex": q, "$options": "i"}}
+            ]}
+        ]
+    }).limit(10).to_list(10)
+    
+    return [UserSearchResponse(id=u["id"], email=u["email"], name=u["name"]) for u in users]
+
 # ================== WALLET ROUTES ==================
 
 @api_router.post("/wallets", response_model=WalletResponse)
@@ -274,10 +333,12 @@ async def create_wallet(wallet_data: WalletCreate, current_user: dict = Depends(
         "balance": 0.0,
         "is_shared": wallet_data.is_shared,
         "owner_id": current_user["id"],
-        "members": [current_user["id"]] if wallet_data.is_shared else [],
+        "members": [],
+        "member_joined": {},
         "created_at": datetime.utcnow()
     }
     await db.wallets.insert_one(wallet)
+    wallet = await get_wallet_with_members(wallet)
     return WalletResponse(**wallet)
 
 @api_router.get("/wallets", response_model=List[WalletResponse])
@@ -289,7 +350,12 @@ async def get_wallets(current_user: dict = Depends(get_current_user)):
             {"members": user_id}
         ]
     }).to_list(100)
-    return [WalletResponse(**w) for w in wallets]
+    
+    result = []
+    for w in wallets:
+        w = await get_wallet_with_members(w)
+        result.append(WalletResponse(**w))
+    return result
 
 @api_router.get("/wallets/{wallet_id}", response_model=WalletResponse)
 async def get_wallet(wallet_id: str, current_user: dict = Depends(get_current_user)):
@@ -300,6 +366,7 @@ async def get_wallet(wallet_id: str, current_user: dict = Depends(get_current_us
     })
     if not wallet:
         raise HTTPException(status_code=404, detail="Portfel nie znaleziony")
+    wallet = await get_wallet_with_members(wallet)
     return WalletResponse(**wallet)
 
 @api_router.put("/wallets/{wallet_id}", response_model=WalletResponse)
@@ -313,17 +380,144 @@ async def update_wallet(wallet_id: str, update_data: WalletUpdate, current_user:
         await db.wallets.update_one({"id": wallet_id}, {"$set": updates})
         wallet.update(updates)
     
+    wallet = await get_wallet_with_members(wallet)
     return WalletResponse(**wallet)
 
 @api_router.delete("/wallets/{wallet_id}")
 async def delete_wallet(wallet_id: str, current_user: dict = Depends(get_current_user)):
     wallet = await db.wallets.find_one({"id": wallet_id, "owner_id": current_user["id"]})
     if not wallet:
-        raise HTTPException(status_code=404, detail="Portfel nie znaleziony")
+        raise HTTPException(status_code=404, detail="Portfel nie znaleziony lub brak uprawnień")
     
     await db.wallets.delete_one({"id": wallet_id})
     await db.transactions.delete_many({"wallet_id": wallet_id})
     return {"message": "Portfel usunięty"}
+
+# ================== JOINT ACCOUNT / SHARED WALLET ROUTES ==================
+
+@api_router.post("/wallets/{wallet_id}/invite")
+async def invite_to_wallet(wallet_id: str, invite_data: WalletInvite, current_user: dict = Depends(get_current_user)):
+    """Invite a user to a shared wallet by email"""
+    # Check wallet exists and user is owner
+    wallet = await db.wallets.find_one({"id": wallet_id, "owner_id": current_user["id"]})
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Portfel nie znaleziony lub brak uprawnień")
+    
+    if not wallet.get("is_shared"):
+        raise HTTPException(status_code=400, detail="Ten portfel nie jest wspólny")
+    
+    # Find user to invite
+    invite_user = await db.users.find_one({"email": invite_data.email.lower()})
+    if not invite_user:
+        raise HTTPException(status_code=404, detail="Użytkownik z tym emailem nie istnieje")
+    
+    if invite_user["id"] == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Nie możesz zaprosić samego siebie")
+    
+    # Check if already a member
+    if invite_user["id"] in wallet.get("members", []):
+        raise HTTPException(status_code=400, detail="Użytkownik jest już członkiem tego portfela")
+    
+    # Add to members
+    member_joined = wallet.get("member_joined", {})
+    member_joined[invite_user["id"]] = datetime.utcnow()
+    
+    await db.wallets.update_one(
+        {"id": wallet_id},
+        {
+            "$addToSet": {"members": invite_user["id"]},
+            "$set": {"member_joined": member_joined}
+        }
+    )
+    
+    return {"message": f"Użytkownik {invite_user['name']} został dodany do portfela"}
+
+@api_router.get("/wallets/{wallet_id}/members", response_model=List[WalletMemberDetail])
+async def get_wallet_members(wallet_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all members of a shared wallet"""
+    user_id = current_user["id"]
+    wallet = await db.wallets.find_one({
+        "id": wallet_id,
+        "$or": [{"owner_id": user_id}, {"members": user_id}]
+    })
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Portfel nie znaleziony")
+    
+    members = []
+    
+    # Add owner
+    owner = await db.users.find_one({"id": wallet["owner_id"]})
+    if owner:
+        members.append(WalletMemberDetail(
+            id=owner["id"],
+            name=owner["name"],
+            email=owner["email"],
+            joined_at=wallet["created_at"]
+        ))
+    
+    # Add members
+    for member_id in wallet.get("members", []):
+        member = await db.users.find_one({"id": member_id})
+        if member:
+            members.append(WalletMemberDetail(
+                id=member["id"],
+                name=member["name"],
+                email=member["email"],
+                joined_at=wallet.get("member_joined", {}).get(member_id)
+            ))
+    
+    return members
+
+@api_router.delete("/wallets/{wallet_id}/members/{member_id}")
+async def remove_from_wallet(wallet_id: str, member_id: str, current_user: dict = Depends(get_current_user)):
+    """Remove a member from a shared wallet (owner only)"""
+    wallet = await db.wallets.find_one({"id": wallet_id, "owner_id": current_user["id"]})
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Portfel nie znaleziony lub brak uprawnień")
+    
+    if member_id not in wallet.get("members", []):
+        raise HTTPException(status_code=404, detail="Użytkownik nie jest członkiem tego portfela")
+    
+    # Remove from members
+    member_joined = wallet.get("member_joined", {})
+    if member_id in member_joined:
+        del member_joined[member_id]
+    
+    await db.wallets.update_one(
+        {"id": wallet_id},
+        {
+            "$pull": {"members": member_id},
+            "$set": {"member_joined": member_joined}
+        }
+    )
+    
+    return {"message": "Członek został usunięty z portfela"}
+
+@api_router.post("/wallets/{wallet_id}/leave")
+async def leave_wallet(wallet_id: str, current_user: dict = Depends(get_current_user)):
+    """Leave a shared wallet (for members, not owner)"""
+    user_id = current_user["id"]
+    wallet = await db.wallets.find_one({"id": wallet_id, "members": user_id})
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Portfel nie znaleziony lub nie jesteś członkiem")
+    
+    if wallet["owner_id"] == user_id:
+        raise HTTPException(status_code=400, detail="Właściciel nie może opuścić portfela. Usuń portfel lub przekaż własność.")
+    
+    # Remove from members
+    member_joined = wallet.get("member_joined", {})
+    if user_id in member_joined:
+        del member_joined[user_id]
+    
+    await db.wallets.update_one(
+        {"id": wallet_id},
+        {
+            "$pull": {"members": user_id},
+            "$set": {"member_joined": member_joined}
+        }
+    )
+    
+    return {"message": "Opuściłeś portfel"}
 
 # ================== TRANSACTION ROUTES ==================
 
@@ -364,6 +558,7 @@ async def create_transaction(tx_data: TransactionCreate, current_user: dict = De
         {"$inc": {"balance": balance_change}}
     )
     
+    transaction = await get_transaction_with_user(transaction)
     return TransactionResponse(**transaction)
 
 @api_router.get("/transactions", response_model=List[TransactionResponse])
@@ -387,7 +582,12 @@ async def get_transactions(
         query = {"wallet_id": wallet_id}
     
     transactions = await db.transactions.find(query).sort("created_at", -1).limit(limit).to_list(limit)
-    return [TransactionResponse(**tx) for tx in transactions]
+    
+    result = []
+    for tx in transactions:
+        tx = await get_transaction_with_user(tx)
+        result.append(TransactionResponse(**tx))
+    return result
 
 @api_router.get("/transactions/{transaction_id}", response_model=TransactionResponse)
 async def get_transaction(transaction_id: str, current_user: dict = Depends(get_current_user)):
@@ -403,6 +603,7 @@ async def get_transaction(transaction_id: str, current_user: dict = Depends(get_
     if not wallet:
         raise HTTPException(status_code=403, detail="Brak dostępu do tej transakcji")
     
+    transaction = await get_transaction_with_user(transaction)
     return TransactionResponse(**transaction)
 
 @api_router.delete("/transactions/{transaction_id}")
@@ -595,6 +796,8 @@ async def chat_with_ai(request: ChatRequest, current_user: dict = Depends(get_cu
         }).to_list(100)
         
         total_balance = sum(w["balance"] for w in wallets)
+        personal_wallets = [w for w in wallets if not w.get("is_shared")]
+        shared_wallets = [w for w in wallets if w.get("is_shared")]
         
         recent_transactions = await db.transactions.find({
             "wallet_id": {"$in": [w["id"] for w in wallets]}
@@ -626,6 +829,12 @@ Ostatnie transakcje (20):
             goals_list = [f"- {g['emoji']} {g['name']}: {g['current_amount']:.2f}/{g['target_amount']:.2f} PLN ({int(g['current_amount']/g['target_amount']*100) if g['target_amount'] > 0 else 0}%)" for g in goals]
             goals_summary = "\nCele oszczędnościowe:\n" + "\n".join(goals_list)
         
+        wallets_summary = f"""
+Portfele:
+- Osobiste: {len(personal_wallets)} portfeli
+- Wspólne: {len(shared_wallets)} portfeli
+"""
+        
         system_message = f"""Jesteś Cenny Grosz - przyjaznym i profesjonalnym asystentem finansowym po polsku.
 
 Twoja osobowość:
@@ -637,6 +846,7 @@ Twoja osobowość:
 Dane finansowe użytkownika {current_user['name']}:
 - Liczba portfeli: {len(wallets)}
 - Całkowite saldo: {total_balance:.2f} PLN
+{wallets_summary}
 {tx_summary}
 {goals_summary}
 

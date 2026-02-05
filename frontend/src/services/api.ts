@@ -69,8 +69,44 @@ class Api {
     return this.fetch<any[]>('/wallets');
   }
 
+  async getWallet(id: string) {
+    return this.fetch<any>(`/wallets/${id}`);
+  }
+
   async createWallet(data: { name: string; emoji: string; is_shared: boolean }) {
     return this.fetch<any>('/wallets', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateWallet(id: string, data: { name?: string; emoji?: string }) {
+    return this.fetch<any>(`/wallets/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteWallet(id: string) {
+    return this.fetch<any>(`/wallets/${id}`, { method: 'DELETE' });
+  }
+
+  // Joint Account / Shared Wallet Management
+  async inviteToWallet(walletId: string, email: string) {
+    return this.fetch<any>(`/wallets/${walletId}/invite`, { 
+      method: 'POST', 
+      body: JSON.stringify({ email }) 
+    });
+  }
+
+  async removeFromWallet(walletId: string, userId: string) {
+    return this.fetch<any>(`/wallets/${walletId}/members/${userId}`, { 
+      method: 'DELETE' 
+    });
+  }
+
+  async leaveWallet(walletId: string) {
+    return this.fetch<any>(`/wallets/${walletId}/leave`, { 
+      method: 'POST' 
+    });
+  }
+
+  async getWalletMembers(walletId: string) {
+    return this.fetch<any[]>(`/wallets/${walletId}/members`);
   }
 
   // Transactions
@@ -126,6 +162,15 @@ class Api {
   // AI
   async chat(message: string) {
     return this.fetch<any>('/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+  }
+
+  async getChatHistory(limit: number = 20) {
+    return this.fetch<any[]>(`/ai/history?limit=${limit}`);
+  }
+
+  // User search (for inviting to wallets)
+  async searchUsers(query: string) {
+    return this.fetch<any[]>(`/users/search?q=${encodeURIComponent(query)}`);
   }
 }
 

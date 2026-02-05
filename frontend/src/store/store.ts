@@ -21,6 +21,11 @@ interface Goal {
   created_at: string;
 }
 
+interface WalletWithMembers extends Wallet {
+  members?: string[];
+  members_details?: { id: string; name: string; email: string }[];
+}
+
 interface AppState {
   // Auth
   user: User | null;
@@ -28,10 +33,10 @@ interface AppState {
   isLoggedIn: boolean;
   
   // Data
-  wallets: Wallet[];
+  wallets: WalletWithMembers[];
   transactions: Transaction[];
   stats: any;
-  activeWallet: Wallet | null;
+  activeWallet: WalletWithMembers | null;
   categories: Category[];
   goals: Goal[];
   
@@ -45,9 +50,17 @@ interface AppState {
   loadCategories: (type?: 'income' | 'expense') => Promise<Category[]>;
   addCategory: (data: { name: string; emoji: string; type: 'income' | 'expense' }) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
-  setActiveWallet: (wallet: Wallet) => void;
+  setActiveWallet: (wallet: WalletWithMembers) => void;
   addTransaction: (data: any) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  
+  // Wallets
+  createWallet: (data: { name: string; emoji: string; is_shared: boolean }) => Promise<void>;
+  updateWallet: (id: string, data: { name?: string; emoji?: string }) => Promise<void>;
+  deleteWallet: (id: string) => Promise<void>;
+  inviteToWallet: (walletId: string, email: string) => Promise<void>;
+  removeFromWallet: (walletId: string, userId: string) => Promise<void>;
+  leaveWallet: (walletId: string) => Promise<void>;
   
   // Goals
   loadGoals: () => Promise<void>;
@@ -141,6 +154,37 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteTransaction: async (id) => {
     await api.deleteTransaction(id);
+    await get().loadData();
+  },
+
+  // Wallet actions
+  createWallet: async (data) => {
+    await api.createWallet(data);
+    await get().loadData();
+  },
+
+  updateWallet: async (id, data) => {
+    await api.updateWallet(id, data);
+    await get().loadData();
+  },
+
+  deleteWallet: async (id) => {
+    await api.deleteWallet(id);
+    await get().loadData();
+  },
+
+  inviteToWallet: async (walletId, email) => {
+    await api.inviteToWallet(walletId, email);
+    await get().loadData();
+  },
+
+  removeFromWallet: async (walletId, userId) => {
+    await api.removeFromWallet(walletId, userId);
+    await get().loadData();
+  },
+
+  leaveWallet: async (walletId) => {
+    await api.leaveWallet(walletId);
     await get().loadData();
   },
 

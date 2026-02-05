@@ -5,19 +5,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/store';
-import { Colors, Gradients } from '../../src/constants/theme';
+import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
 
 // Common emojis for quick selection
 const EMOJI_OPTIONS = ['🍔', '🚗', '🛒', '🎬', '📄', '💊', '💰', '💻', '🎁', '📈', '🏠', '✈️', '🎮', '📱', '👕', '💪', '🎓', '🐕', '☕', '🍕', '🎵', '⚽', '🎨', '💇', '🔧'];
 
 export default function AddTransaction() {
   const router = useRouter();
-  const { activeWallet, addTransaction, categories, loadCategories, addCategory } = useStore();
+  const { wallets, activeWallet, setActiveWallet, addTransaction, categories, loadCategories, addCategory } = useStore();
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Wallet selection
+  const [showWalletModal, setShowWalletModal] = useState(false);
   
   // New category modal
   const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
@@ -35,7 +38,7 @@ export default function AddTransaction() {
   const handleSubmit = async () => {
     if (!amount || parseFloat(amount) <= 0) return Alert.alert('Błąd', 'Podaj kwotę');
     if (!selectedCategory) return Alert.alert('Błąd', 'Wybierz kategorię');
-    if (!activeWallet) return Alert.alert('Błąd', 'Brak portfela');
+    if (!activeWallet) return Alert.alert('Błąd', 'Wybierz portfel');
 
     setLoading(true);
     try {
@@ -76,21 +79,45 @@ export default function AddTransaction() {
     }
   };
 
+  const formatMoney = (n: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', minimumFractionDigits: 0 }).format(n);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <Text style={styles.title}>Nowa transakcja</Text>
+            <Text style={styles.subtitle}>Dodaj przychód lub wydatek</Text>
           </View>
+
+          {/* Wallet Selector */}
+          <TouchableOpacity style={styles.walletSelector} onPress={() => setShowWalletModal(true)}>
+            <View style={styles.walletSelectorLeft}>
+              <View style={[styles.walletIcon, activeWallet?.is_shared && styles.walletIconShared]}>
+                <Text style={styles.walletEmoji}>{activeWallet?.emoji || '💰'}</Text>
+              </View>
+              <View>
+                <Text style={styles.walletName}>{activeWallet?.name || 'Wybierz portfel'}</Text>
+                <Text style={styles.walletBalance}>
+                  Saldo: {formatMoney(activeWallet?.balance || 0)}
+                  {activeWallet?.is_shared && ' • Wspólny'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-down" size={20} color={Colors.textMuted} />
+          </TouchableOpacity>
 
           {/* Type Toggle */}
           <View style={styles.typeToggle}>
             <TouchableOpacity
               style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
               onPress={() => { setType('expense'); setSelectedCategory(null); }}
+              activeOpacity={0.7}
             >
-              <LinearGradient colors={type === 'expense' ? Gradients.expense : [Colors.card, Colors.card]} style={styles.typeBtnInner}>
+              <LinearGradient 
+                colors={type === 'expense' ? Gradients.expense : [Colors.card, Colors.card]} 
+                style={styles.typeBtnInner}
+              >
                 <Ionicons name="arrow-down" size={20} color={type === 'expense' ? Colors.white : Colors.expense} />
                 <Text style={[styles.typeBtnText, type === 'expense' && styles.typeBtnTextActive]}>Wydatek</Text>
               </LinearGradient>
@@ -98,8 +125,12 @@ export default function AddTransaction() {
             <TouchableOpacity
               style={[styles.typeBtn, type === 'income' && styles.typeBtnActive]}
               onPress={() => { setType('income'); setSelectedCategory(null); }}
+              activeOpacity={0.7}
             >
-              <LinearGradient colors={type === 'income' ? Gradients.income : [Colors.card, Colors.card]} style={styles.typeBtnInner}>
+              <LinearGradient 
+                colors={type === 'income' ? Gradients.income : [Colors.card, Colors.card]} 
+                style={styles.typeBtnInner}
+              >
                 <Ionicons name="arrow-up" size={20} color={type === 'income' ? Colors.white : Colors.income} />
                 <Text style={[styles.typeBtnText, type === 'income' && styles.typeBtnTextActive]}>Przychód</Text>
               </LinearGradient>
@@ -123,39 +154,40 @@ export default function AddTransaction() {
           <View style={styles.categoryHeader}>
             <Text style={styles.label}>Kategoria</Text>
             <TouchableOpacity style={styles.addCategoryBtn} onPress={() => setShowNewCategoryModal(true)}>
-              <Ionicons name="add-circle" size={24} color={Colors.primary} />
+              <Ionicons name="add-circle" size={22} color={Colors.primary} />
               <Text style={styles.addCategoryText}>Nowa</Text>
             </TouchableOpacity>
           </View>
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+          <View style={styles.categoriesGrid}>
             {filteredCategories.map((cat) => (
               <TouchableOpacity
                 key={cat.id}
                 style={[
                   styles.categoryBtn, 
                   selectedCategory?.id === cat.id && { 
-                    backgroundColor: type === 'income' ? '#10B98120' : '#F43F5E20',
+                    backgroundColor: type === 'income' ? Colors.incomeLight : Colors.expenseLight,
                     borderColor: type === 'income' ? Colors.income : Colors.expense 
                   }
                 ]}
                 onPress={() => setSelectedCategory(cat)}
+                activeOpacity={0.7}
               >
                 <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
                 <Text style={[
                   styles.categoryName, 
                   selectedCategory?.id === cat.id && { color: type === 'income' ? Colors.income : Colors.expense }
-                ]}>
+                ]} numberOfLines={1}>
                   {cat.name}
                 </Text>
                 {!cat.is_default && (
                   <View style={styles.customBadge}>
-                    <Text style={styles.customBadgeText}>własna</Text>
+                    <Text style={styles.customBadgeText}>✓</Text>
                   </View>
                 )}
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
 
           {/* Note */}
           <Text style={styles.label}>Notatka (opcjonalne)</Text>
@@ -168,13 +200,58 @@ export default function AddTransaction() {
           />
 
           {/* Submit */}
-          <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={loading}>
+          <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={loading} activeOpacity={0.8}>
             <LinearGradient colors={type === 'income' ? Gradients.income : Gradients.expense} style={styles.submitGradient}>
               <Text style={styles.submitText}>{loading ? 'Dodawanie...' : 'Dodaj transakcję'}</Text>
             </LinearGradient>
           </TouchableOpacity>
+
+          <View style={{ height: 100 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Wallet Selection Modal */}
+      <Modal visible={showWalletModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Wybierz portfel</Text>
+              <TouchableOpacity onPress={() => setShowWalletModal(false)}>
+                <Ionicons name="close" size={24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.walletList}>
+              {wallets.map((wallet) => (
+                <TouchableOpacity
+                  key={wallet.id}
+                  style={[styles.walletOption, activeWallet?.id === wallet.id && styles.walletOptionActive]}
+                  onPress={() => { setActiveWallet(wallet); setShowWalletModal(false); }}
+                >
+                  <View style={[styles.walletOptionIcon, wallet.is_shared && styles.walletOptionIconShared]}>
+                    <Text style={styles.walletOptionEmoji}>{wallet.emoji}</Text>
+                  </View>
+                  <View style={styles.walletOptionInfo}>
+                    <Text style={styles.walletOptionName}>{wallet.name}</Text>
+                    <View style={styles.walletOptionMeta}>
+                      <Text style={styles.walletOptionBalance}>{formatMoney(wallet.balance)}</Text>
+                      {wallet.is_shared && (
+                        <View style={styles.sharedTag}>
+                          <Ionicons name="people" size={12} color={Colors.shared} />
+                          <Text style={styles.sharedTagText}>Wspólny</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  {activeWallet?.id === wallet.id && (
+                    <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* New Category Modal */}
       <Modal visible={showNewCategoryModal} animationType="slide" transparent>
@@ -187,7 +264,16 @@ export default function AddTransaction() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalLabel}>Typ: {type === 'income' ? 'Przychód 💰' : 'Wydatek 💸'}</Text>
+            <View style={styles.typeIndicator}>
+              <Ionicons 
+                name={type === 'income' ? 'arrow-up' : 'arrow-down'} 
+                size={16} 
+                color={type === 'income' ? Colors.income : Colors.expense} 
+              />
+              <Text style={[styles.typeIndicatorText, { color: type === 'income' ? Colors.income : Colors.expense }]}>
+                {type === 'income' ? 'Przychód' : 'Wydatek'}
+              </Text>
+            </View>
 
             <Text style={styles.modalLabel}>Nazwa kategorii</Text>
             <TextInput
@@ -232,50 +318,173 @@ export default function AddTransaction() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 20 },
-  header: { marginBottom: 24 },
-  title: { fontSize: 24, fontWeight: '700', color: Colors.text },
-  typeToggle: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  typeBtn: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  container: { flex: 1, backgroundColor: Colors.background },
+  header: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg, paddingBottom: Spacing.md },
+  title: { fontSize: 28, fontWeight: '700', color: Colors.text },
+  subtitle: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
+  walletSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    marginHorizontal: Spacing.xl,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.lg,
+    ...Shadows.small,
+  },
+  walletSelectorLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  walletIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  walletIconShared: { backgroundColor: Colors.sharedLight },
+  walletEmoji: { fontSize: 22 },
+  walletName: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  walletBalance: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
+  typeToggle: { flexDirection: 'row', gap: Spacing.md, marginHorizontal: Spacing.xl, marginBottom: Spacing.xl },
+  typeBtn: { flex: 1, borderRadius: BorderRadius.xl, overflow: 'hidden', ...Shadows.small },
   typeBtnActive: {},
-  typeBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8, borderRadius: 16 },
+  typeBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.lg, gap: Spacing.sm, borderRadius: BorderRadius.xl },
   typeBtnText: { fontSize: 15, fontWeight: '600', color: Colors.text },
   typeBtnTextActive: { color: Colors.white },
-  amountBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 20, padding: 20, marginBottom: 24 },
-  currency: { fontSize: 24, fontWeight: '700', color: Colors.textMuted, marginRight: 8 },
-  amountInput: { flex: 1, fontSize: 40, fontWeight: '800', color: Colors.text },
-  categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  label: { fontSize: 14, fontWeight: '600', color: Colors.textLight },
+  amountBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.card, 
+    borderRadius: BorderRadius.xl, 
+    padding: Spacing.xl, 
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+    ...Shadows.small,
+  },
+  currency: { fontSize: 28, fontWeight: '700', color: Colors.textMuted, marginRight: Spacing.sm },
+  amountInput: { flex: 1, fontSize: 44, fontWeight: '800', color: Colors.text },
+  categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: Spacing.xl, marginBottom: Spacing.md },
+  label: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginHorizontal: Spacing.xl, marginBottom: Spacing.sm },
   addCategoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addCategoryText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
-  categoryScroll: { marginBottom: 24 },
-  categoryBtn: { alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 16, backgroundColor: Colors.card, marginRight: 10, borderWidth: 2, borderColor: 'transparent', minWidth: 80 },
-  categoryEmoji: { fontSize: 24, marginBottom: 4 },
-  categoryName: { fontSize: 12, fontWeight: '600', color: Colors.textLight },
-  customBadge: { position: 'absolute', top: 4, right: 4, backgroundColor: Colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  customBadgeText: { fontSize: 8, color: Colors.white, fontWeight: '600' },
-  noteInput: { backgroundColor: Colors.card, borderRadius: 16, paddingHorizontal: 16, height: 56, fontSize: 16, color: Colors.text, marginBottom: 24 },
-  submitBtn: { borderRadius: 16, overflow: 'hidden', marginBottom: 40 },
+  categoriesGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    paddingHorizontal: Spacing.xl - 4, 
+    marginBottom: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  categoryBtn: { 
+    alignItems: 'center', 
+    paddingVertical: Spacing.md, 
+    paddingHorizontal: Spacing.md, 
+    borderRadius: BorderRadius.lg, 
+    backgroundColor: Colors.card, 
+    borderWidth: 2, 
+    borderColor: 'transparent', 
+    width: '30%',
+    ...Shadows.small,
+  },
+  categoryEmoji: { fontSize: 26, marginBottom: 4 },
+  categoryName: { fontSize: 11, fontWeight: '600', color: Colors.textLight, textAlign: 'center' },
+  customBadge: { 
+    position: 'absolute', 
+    top: 4, 
+    right: 4, 
+    backgroundColor: Colors.primary, 
+    width: 16, 
+    height: 16, 
+    borderRadius: 8, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+  },
+  customBadgeText: { fontSize: 10, color: Colors.white, fontWeight: '600' },
+  noteInput: { 
+    backgroundColor: Colors.card, 
+    borderRadius: BorderRadius.xl, 
+    paddingHorizontal: Spacing.lg, 
+    height: 56, 
+    fontSize: 16, 
+    color: Colors.text, 
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+    ...Shadows.small,
+  },
+  submitBtn: { borderRadius: BorderRadius.xl, overflow: 'hidden', marginHorizontal: Spacing.xl, ...Shadows.medium },
   submitGradient: { height: 56, justifyContent: 'center', alignItems: 'center' },
   submitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
   
   // Modal styles
   modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: Colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
-  modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: 8, marginTop: 12 },
-  modalInput: { backgroundColor: Colors.background, borderRadius: 12, paddingHorizontal: 16, height: 52, fontSize: 16, color: Colors.text },
-  emojiScroll: { marginBottom: 16 },
-  emojiBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  modalContent: { 
+    backgroundColor: Colors.card, 
+    borderTopLeftRadius: BorderRadius.xxl, 
+    borderTopRightRadius: BorderRadius.xxl, 
+    padding: Spacing.xxl, 
+    maxHeight: '85%',
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
+  modalTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
+  modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg },
+  modalInput: { backgroundColor: Colors.background, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, height: 52, fontSize: 16, color: Colors.text },
+  typeIndicator: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: Spacing.xs,
+    backgroundColor: Colors.background,
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+  },
+  typeIndicatorText: { fontSize: 13, fontWeight: '600' },
+  emojiScroll: { marginBottom: Spacing.md },
+  emojiBtn: { width: 48, height: 48, borderRadius: BorderRadius.md, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.sm },
   emojiBtnSelected: { backgroundColor: Colors.primary + '20', borderWidth: 2, borderColor: Colors.primary },
   emojiBtnText: { fontSize: 24 },
-  previewBox: { backgroundColor: Colors.background, borderRadius: 12, padding: 16, marginBottom: 20 },
-  previewLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 8 },
-  previewCategory: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  previewBox: { backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.xl },
+  previewLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: Spacing.sm },
+  previewCategory: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   previewEmoji: { fontSize: 32 },
   previewName: { fontSize: 18, fontWeight: '600', color: Colors.text },
-  modalSubmitBtn: { borderRadius: 12, overflow: 'hidden' },
+  modalSubmitBtn: { borderRadius: BorderRadius.md, overflow: 'hidden' },
   modalSubmitGradient: { height: 52, justifyContent: 'center', alignItems: 'center' },
   modalSubmitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
+  
+  // Wallet list
+  walletList: { maxHeight: 400 },
+  walletOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.background,
+  },
+  walletOptionActive: { backgroundColor: Colors.primary + '10', borderWidth: 1, borderColor: Colors.primary },
+  walletOptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  walletOptionIconShared: { backgroundColor: Colors.sharedLight },
+  walletOptionEmoji: { fontSize: 22 },
+  walletOptionInfo: { flex: 1, marginLeft: Spacing.md },
+  walletOptionName: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  walletOptionMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 4 },
+  walletOptionBalance: { fontSize: 14, color: Colors.textLight },
+  sharedTag: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4, 
+    backgroundColor: Colors.sharedLight, 
+    paddingHorizontal: Spacing.sm, 
+    paddingVertical: 2, 
+    borderRadius: BorderRadius.full,
+  },
+  sharedTagText: { fontSize: 11, color: Colors.shared, fontWeight: '600' },
 });
