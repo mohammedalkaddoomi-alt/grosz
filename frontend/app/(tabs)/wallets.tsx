@@ -61,7 +61,12 @@ export default function WalletsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchWallets(), fetchTransactions(selectedWallet?.id)]);
+    await fetchWallets();
+    if (selectedWallet) {
+      await fetchTransactions(selectedWallet.id);
+    } else {
+      await fetchTransactions();
+    }
     setRefreshing(false);
   }, [selectedWallet]);
 
