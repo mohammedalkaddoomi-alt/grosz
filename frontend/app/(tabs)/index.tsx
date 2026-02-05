@@ -7,13 +7,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   Dimensions,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/store/authStore';
 import { useDataStore } from '../../src/store/dataStore';
-import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../src/constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, GRADIENTS } from '../../src/constants/theme';
 import { PL } from '../../src/constants/polish';
 
 const { width } = Dimensions.get('window');
@@ -21,7 +23,7 @@ const { width } = Dimensions.get('window');
 export default function DashboardScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { dashboardStats, transactions, goals, refreshAll, isLoading } = useDataStore();
+  const { dashboardStats, transactions, goals, refreshAll } = useDataStore();
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -38,95 +40,163 @@ export default function DashboardScreen() {
     return new Intl.NumberFormat('pl-PL', {
       style: 'currency',
       currency: 'PLN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount);
   };
 
-  const recentTransactions = transactions.slice(0, 5);
-  const activeGoals = goals.filter(g => !g.completed).slice(0, 3);
+  const recentTransactions = transactions.slice(0, 4);
+  const activeGoals = goals.filter((g) => !g.completed).slice(0, 2);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Dzień dobry';
+    if (hour < 18) return 'Cześć';
+    return 'Dobry wieczór';
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient
+        colors={['#1A1A2E', '#16213E']}
+        style={styles.headerGradient}
+      >
+        <SafeAreaView edges={['top']} style={styles.safeArea}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.greeting}>{getGreeting()} 👋</Text>
+              <Text style={styles.userName}>{user?.name || 'Użytkowniku'}</Text>
+            </View>
+            <TouchableOpacity style={styles.notificationBtn}>
+              <Ionicons name="notifications-outline" size={24} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Balance Card */}
+          <View style={styles.balanceCard}>
+            <LinearGradient
+              colors={GRADIENTS.primary}
+              style={styles.balanceGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.cardDecor1} />
+              <View style={styles.cardDecor2} />
+              
+              <Text style={styles.balanceLabel}>{PL.totalBalance}</Text>
+              <Text style={styles.balanceAmount}>
+                {formatCurrency(dashboardStats?.total_balance || 0)}
+              </Text>
+
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <View style={styles.statIconBg}>
+                    <Ionicons name="arrow-up" size={14} color={COLORS.income} />
+                  </View>
+                  <View>
+                    <Text style={styles.statLabel}>Przychody</Text>
+                    <Text style={styles.statValueIncome}>
+                      +{formatCurrency(dashboardStats?.month_income || 0)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <View style={styles.statIconBg}>
+                    <Ionicons name="arrow-down" size={14} color={COLORS.expense} />
+                  </View>
+                  <View>
+                    <Text style={styles.statLabel}>Wydatki</Text>
+                    <Text style={styles.statValueExpense}>
+                      -{formatCurrency(dashboardStats?.month_expenses || 0)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+
+      {/* Content */}
       <ScrollView
+        style={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{PL.hello}, {user?.name?.split(' ')[0] || 'Użytkowniku'} 👋</Text>
-            <Text style={styles.date}>
-              {new Date().toLocaleDateString('pl-PL', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
-            </Text>
-          </View>
-          <View style={styles.logoSmall}>
-            <Text style={styles.logoEmoji}>💰</Text>
-          </View>
-        </View>
-
-        {/* Balance Card */}
-        <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>{PL.totalBalance}</Text>
-          <Text style={styles.balanceAmount}>
-            {formatCurrency(dashboardStats?.total_balance || 0)}
-          </Text>
-          <View style={styles.balanceStats}>
-            <View style={styles.statItem}>
-              <View style={[styles.statIcon, { backgroundColor: COLORS.incomeLight + '40' }]}>
-                <Ionicons name="arrow-up" size={16} color={COLORS.income} />
-              </View>
-              <View>
-                <Text style={styles.statLabel}>{PL.monthIncome}</Text>
-                <Text style={[styles.statValue, { color: COLORS.income }]}>
-                  +{formatCurrency(dashboardStats?.month_income || 0)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <View style={[styles.statIcon, { backgroundColor: COLORS.expenseLight + '40' }]}>
-                <Ionicons name="arrow-down" size={16} color={COLORS.expense} />
-              </View>
-              <View>
-                <Text style={styles.statLabel}>{PL.monthExpenses}</Text>
-                <Text style={[styles.statValue, { color: COLORS.expense }]}>
-                  -{formatCurrency(dashboardStats?.month_expenses || 0)}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
         {/* Quick Actions */}
         <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={[styles.quickAction, { backgroundColor: COLORS.income + '15' }]}
+          <QuickAction
+            icon="add-circle"
+            label="Przychód"
+            gradient={GRADIENTS.income}
             onPress={() => router.push('/wallets')}
-          >
-            <Ionicons name="add-circle" size={28} color={COLORS.income} />
-            <Text style={styles.quickActionText}>{PL.income}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.quickAction, { backgroundColor: COLORS.expense + '15' }]}
+          />
+          <QuickAction
+            icon="remove-circle"
+            label="Wydatek"
+            gradient={GRADIENTS.expense}
             onPress={() => router.push('/wallets')}
-          >
-            <Ionicons name="remove-circle" size={28} color={COLORS.expense} />
-            <Text style={styles.quickActionText}>{PL.expense}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.quickAction, { backgroundColor: COLORS.primary + '15' }]}
+          />
+          <QuickAction
+            icon="swap-horizontal"
+            label="Transfer"
+            gradient={GRADIENTS.purple}
+            onPress={() => router.push('/wallets')}
+          />
+          <QuickAction
+            icon="flag"
+            label="Cel"
+            gradient={GRADIENTS.sunset}
             onPress={() => router.push('/goals')}
-          >
-            <Ionicons name="flag" size={28} color={COLORS.primary} />
-            <Text style={styles.quickActionText}>{PL.goals}</Text>
-          </TouchableOpacity>
+          />
         </View>
+
+        {/* Goals Progress */}
+        {activeGoals.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{PL.yourGoals}</Text>
+              <TouchableOpacity onPress={() => router.push('/goals')}>
+                <Text style={styles.seeAll}>{PL.seeAll}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.goalsContainer}>
+              {activeGoals.map((goal) => {
+                const progress = Math.min((goal.current_amount / goal.target_amount) * 100, 100);
+                return (
+                  <TouchableOpacity key={goal.id} style={styles.goalCard} activeOpacity={0.8}>
+                    <View style={styles.goalHeader}>
+                      <View style={styles.goalIconContainer}>
+                        <Text style={styles.goalEmoji}>{goal.emoji}</Text>
+                      </View>
+                      <View style={styles.goalInfo}>
+                        <Text style={styles.goalName} numberOfLines={1}>{goal.name}</Text>
+                        <Text style={styles.goalAmount}>
+                          {formatCurrency(goal.current_amount)} / {formatCurrency(goal.target_amount)}
+                        </Text>
+                      </View>
+                      <Text style={styles.goalPercent}>{Math.round(progress)}%</Text>
+                    </View>
+                    <View style={styles.progressBarBg}>
+                      <LinearGradient
+                        colors={GRADIENTS.primary}
+                        style={[styles.progressBarFill, { width: `${progress}%` }]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Recent Transactions */}
         <View style={styles.section}>
@@ -136,132 +206,163 @@ export default function DashboardScreen() {
               <Text style={styles.seeAll}>{PL.seeAll}</Text>
             </TouchableOpacity>
           </View>
+          
           {recentTransactions.length > 0 ? (
-            recentTransactions.map((tx) => (
-              <View key={tx.id} style={styles.transactionItem}>
-                <View style={styles.transactionIcon}>
-                  <Text style={styles.transactionEmoji}>{tx.emoji}</Text>
+            <View style={styles.transactionsCard}>
+              {recentTransactions.map((tx, index) => (
+                <View key={tx.id} style={[
+                  styles.transactionItem,
+                  index === recentTransactions.length - 1 && styles.lastTransaction
+                ]}>
+                  <View style={[
+                    styles.txIconContainer,
+                    { backgroundColor: tx.type === 'income' ? `${COLORS.income}15` : `${COLORS.expense}15` }
+                  ]}>
+                    <Text style={styles.txEmoji}>{tx.emoji}</Text>
+                  </View>
+                  <View style={styles.txInfo}>
+                    <Text style={styles.txCategory}>{tx.category}</Text>
+                    <Text style={styles.txDate}>
+                      {new Date(tx.created_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
+                    </Text>
+                  </View>
+                  <Text style={[
+                    styles.txAmount,
+                    { color: tx.type === 'income' ? COLORS.income : COLORS.expense }
+                  ]}>
+                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </Text>
                 </View>
-                <View style={styles.transactionInfo}>
-                  <Text style={styles.transactionCategory}>{tx.category}</Text>
-                  <Text style={styles.transactionNote}>{tx.note || '-'}</Text>
-                </View>
-                <Text
-                  style={[
-                    styles.transactionAmount,
-                    { color: tx.type === 'income' ? COLORS.income : COLORS.expense },
-                  ]}
-                >
-                  {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
-                </Text>
-              </View>
-            ))
+              ))}
+            </View>
           ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="receipt-outline" size={48} color={COLORS.textLight} />
+            <View style={styles.emptyCard}>
+              <Ionicons name="receipt-outline" size={48} color={COLORS.textMuted} />
               <Text style={styles.emptyText}>Brak transakcji</Text>
+              <TouchableOpacity 
+                style={styles.emptyButton}
+                onPress={() => router.push('/wallets')}
+              >
+                <Text style={styles.emptyButtonText}>Dodaj pierwszą</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* Goals Progress */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{PL.yourGoals}</Text>
-            <TouchableOpacity onPress={() => router.push('/goals')}>
-              <Text style={styles.seeAll}>{PL.seeAll}</Text>
-            </TouchableOpacity>
-          </View>
-          {activeGoals.length > 0 ? (
-            activeGoals.map((goal) => {
-              const progress = (goal.current_amount / goal.target_amount) * 100;
-              return (
-                <View key={goal.id} style={styles.goalItem}>
-                  <View style={styles.goalHeader}>
-                    <View style={styles.goalIcon}>
-                      <Text style={styles.goalEmoji}>{goal.emoji}</Text>
-                    </View>
-                    <View style={styles.goalInfo}>
-                      <Text style={styles.goalName}>{goal.name}</Text>
-                      <Text style={styles.goalAmount}>
-                        {formatCurrency(goal.current_amount)} / {formatCurrency(goal.target_amount)}
-                      </Text>
-                    </View>
-                    <Text style={styles.goalPercent}>{Math.round(progress)}%</Text>
-                  </View>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
-                  </View>
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="flag-outline" size={48} color={COLORS.textLight} />
-              <Text style={styles.emptyText}>Brak celów</Text>
+        {/* AI Tip Card */}
+        <TouchableOpacity 
+          style={styles.aiCard}
+          activeOpacity={0.9}
+          onPress={() => router.push('/assistant')}
+        >
+          <LinearGradient
+            colors={['#667eea', '#764ba2']}
+            style={styles.aiGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.aiContent}>
+              <View style={styles.aiIconBg}>
+                <Ionicons name="sparkles" size={24} color={COLORS.white} />
+              </View>
+              <View style={styles.aiTextContainer}>
+                <Text style={styles.aiTitle}>Asystent AI</Text>
+                <Text style={styles.aiDescription}>Porozmawiaj o finansach</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.7)" />
             </View>
-          )}
-        </View>
+          </LinearGradient>
+        </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
+
+const QuickAction = ({ icon, label, gradient, onPress }: any) => (
+  <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.8}>
+    <LinearGradient colors={gradient} style={styles.quickActionIcon}>
+      <Ionicons name={icon} size={22} color={COLORS.white} />
+    </LinearGradient>
+    <Text style={styles.quickActionLabel}>{label}</Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  scrollContent: {
-    padding: SPACING.md,
-    paddingBottom: 100,
+  headerGradient: {
+    paddingBottom: 40,
+  },
+  safeArea: {
+    paddingHorizontal: SPACING.lg,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.lg,
+    marginTop: SPACING.sm,
   },
   greeting: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  date: {
     fontSize: 14,
-    color: COLORS.textLight,
-    marginTop: 2,
-    textTransform: 'capitalize',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
-  logoSmall: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primaryLight + '30',
+  userName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.white,
+    marginTop: 2,
+  },
+  notificationBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoEmoji: {
-    fontSize: 24,
-  },
   balanceCard: {
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+  },
+  balanceGradient: {
     padding: SPACING.lg,
-    marginBottom: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardDecor1: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    top: -50,
+    right: -30,
+  },
+  cardDecor2: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    bottom: -30,
+    left: 20,
   },
   balanceLabel: {
     fontSize: 14,
-    color: COLORS.white + '80',
+    color: 'rgba(255, 255, 255, 0.8)',
     marginBottom: SPACING.xs,
   },
   balanceAmount: {
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: COLORS.white,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
-  balanceStats: {
+  statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -271,51 +372,70 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  statIcon: {
+  statIconBg: {
     width: 32,
     height: 32,
     borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: 11,
-    color: COLORS.white + '70',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
-  statValue: {
+  statValueIncome: {
     fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.white,
+    fontWeight: '700',
+    color: COLORS.income,
+  },
+  statValueExpense: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.expense,
   },
   statDivider: {
     width: 1,
-    height: 32,
-    backgroundColor: COLORS.white + '30',
+    height: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     marginHorizontal: SPACING.md,
+  },
+  content: {
+    flex: 1,
+    marginTop: -20,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+    paddingTop: SPACING.xl,
+    paddingBottom: 100,
   },
   quickActions: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xl,
   },
   quickAction: {
-    flex: 1,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
-    gap: SPACING.xs,
+    width: (width - 48 - 36) / 4,
   },
-  quickActionText: {
+  quickActionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  quickActionLabel: {
     fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.text,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
   },
   section: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    ...SHADOWS.sm,
+    marginBottom: SPACING.xl,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -324,107 +444,165 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: COLORS.text,
   },
   seeAll: {
     fontSize: 14,
     color: COLORS.primary,
-    fontWeight: '500',
-  },
-  transactionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  transactionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  transactionEmoji: {
-    fontSize: 20,
-  },
-  transactionInfo: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
-  transactionCategory: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.text,
-  },
-  transactionNote: {
-    fontSize: 12,
-    color: COLORS.textLight,
-  },
-  transactionAmount: {
-    fontSize: 14,
     fontWeight: '600',
   },
-  goalItem: {
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+  goalsContainer: {
+    gap: SPACING.sm,
+  },
+  goalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
   },
   goalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.sm,
   },
-  goalIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight + '20',
+  goalIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: `${COLORS.primary}10`,
     justifyContent: 'center',
     alignItems: 'center',
   },
   goalEmoji: {
-    fontSize: 20,
+    fontSize: 22,
   },
   goalInfo: {
     flex: 1,
     marginLeft: SPACING.sm,
   },
   goalName: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     color: COLORS.text,
   },
   goalAmount: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.textLight,
+    marginTop: 2,
   },
   goalPercent: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: COLORS.primary,
   },
-  progressBar: {
-    height: 6,
-    backgroundColor: COLORS.border,
-    borderRadius: 3,
+  progressBarBg: {
+    height: 8,
+    backgroundColor: `${COLORS.primary}15`,
+    borderRadius: 4,
     overflow: 'hidden',
   },
-  progressFill: {
+  progressBarFill: {
     height: '100%',
-    backgroundColor: COLORS.primary,
-    borderRadius: 3,
+    borderRadius: 4,
   },
-  emptyState: {
+  transactionsCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+  },
+  transactionItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.lg,
-    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  lastTransaction: {
+    borderBottomWidth: 0,
+  },
+  txIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  txEmoji: {
+    fontSize: 20,
+  },
+  txInfo: {
+    flex: 1,
+    marginLeft: SPACING.sm,
+  },
+  txCategory: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  txDate: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  txAmount: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.textLight,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  emptyButton: {
+    backgroundColor: `${COLORS.primary}15`,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  emptyButtonText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  aiCard: {
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+  },
+  aiGradient: {
+    padding: SPACING.md,
+  },
+  aiContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  aiIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  aiTextContainer: {
+    flex: 1,
+    marginLeft: SPACING.md,
+  },
+  aiTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  aiDescription: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
   },
 });
