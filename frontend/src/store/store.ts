@@ -11,6 +11,16 @@ interface Category {
   is_default: boolean;
 }
 
+interface Goal {
+  id: string;
+  name: string;
+  emoji: string;
+  target_amount: number;
+  current_amount: number;
+  completed: boolean;
+  created_at: string;
+}
+
 interface AppState {
   // Auth
   user: User | null;
@@ -23,6 +33,7 @@ interface AppState {
   stats: any;
   activeWallet: Wallet | null;
   categories: Category[];
+  goals: Goal[];
   
   // Actions
   init: () => Promise<void>;
@@ -37,6 +48,12 @@ interface AppState {
   setActiveWallet: (wallet: Wallet) => void;
   addTransaction: (data: any) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  
+  // Goals
+  loadGoals: () => Promise<void>;
+  addGoal: (data: { name: string; target_amount: number; emoji: string }) => Promise<void>;
+  contributeToGoal: (id: string, amount: number) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
