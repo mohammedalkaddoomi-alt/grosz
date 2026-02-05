@@ -9,11 +9,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
-import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../src/constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, GRADIENTS } from '../../src/constants/theme';
 import { PL } from '../../src/constants/polish';
 
 interface Message {
@@ -30,96 +32,57 @@ export default function AssistantScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const flatListRef = useRef<FlatList>(null);
 
-  useEffect(() => {
-    loadChatHistory();
-  }, []);
+  useEffect(() => { loadChatHistory(); }, []);
 
   const loadChatHistory = async () => {
     try {
       const history = await api.getChatHistory();
       const formattedMessages: Message[] = [];
-      
       history.forEach((item: any) => {
-        formattedMessages.push({
-          id: `user-${item.timestamp}`,
-          role: 'user',
-          content: item.user_message,
-          timestamp: new Date(item.timestamp),
-        });
-        formattedMessages.push({
-          id: `ai-${item.timestamp}`,
-          role: 'assistant',
-          content: item.ai_response,
-          timestamp: new Date(item.timestamp),
-        });
+        formattedMessages.push({ id: `user-${item.timestamp}`, role: 'user', content: item.user_message, timestamp: new Date(item.timestamp) });
+        formattedMessages.push({ id: `ai-${item.timestamp}`, role: 'assistant', content: item.ai_response, timestamp: new Date(item.timestamp) });
       });
-      
       setMessages(formattedMessages);
-    } catch (error) {
-      console.error('Error loading chat history:', error);
-    } finally {
-      setIsLoadingHistory(false);
-    }
+    } catch (error) { console.error('Error loading history:', error); }
+    finally { setIsLoadingHistory(false); }
   };
 
   const sendMessage = async () => {
     if (!inputText.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: inputText.trim(),
-      timestamp: new Date(),
-    };
-
+    const userMessage: Message = { id: `user-${Date.now()}`, role: 'user', content: inputText.trim(), timestamp: new Date() };
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
-
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     try {
       const response = await api.sendMessage(userMessage.content);
-      
-      const aiMessage: Message = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: response.response,
-        timestamp: new Date(response.timestamp),
-      };
-
+      const aiMessage: Message = { id: `ai-${Date.now()}`, role: 'assistant', content: response.response, timestamp: new Date(response.timestamp) };
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error: any) {
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: 'Przepraszam, wystąpił błąd. Spróbuj ponownie później. 😔',
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: 'Przepraszam, wystąpił błąd. Spróbuj ponownie. 😔', timestamp: new Date() }]);
     } finally {
       setIsLoading(false);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
     return (
-      <View style={[styles.messageContainer, isUser ? styles.userMessage : styles.aiMessage]}>
+      <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
         {!isUser && (
-          <View style={styles.avatarContainer}>
-            <Text style={styles.avatarEmoji}>💰</Text>
-          </View>
+          <LinearGradient colors={GRADIENTS.primary} style={styles.avatar}>
+            <Ionicons name="sparkles" size={16} color={COLORS.white} />
+          </LinearGradient>
         )}
         <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.aiBubble]}>
-          <Text style={[styles.messageText, isUser && styles.userMessageText]}>
-            {item.content}
-          </Text>
+          {isUser ? (
+            <LinearGradient colors={GRADIENTS.primary} style={styles.userBubbleGradient}>
+              <Text style={styles.userMessageText}>{item.content}</Text>
+            </LinearGradient>
+          ) : (
+            <Text style={styles.aiMessageText}>{item.content}</Text>
+          )}
         </View>
       </View>
     );
@@ -127,40 +90,34 @@ export default function AssistantScreen() {
 
   const renderWelcome = () => (
     <View style={styles.welcomeContainer}>
-      <View style={styles.welcomeIcon}>
-        <Text style={styles.welcomeEmoji}>💰</Text>
-      </View>
-      <Text style={styles.welcomeTitle}>Witaj! Jestem Cenny Grosz</Text>
-      <Text style={styles.welcomeText}>
-        Twój osobisty asystent finansowy. Mogę Ci pomóc z:
-      </Text>
-      <View style={styles.suggestionsList}>
-        <TouchableOpacity
-          style={styles.suggestion}
-          onPress={() => setInputText('Jak mogę lepiej oszczędzać pieniądze?')}
-        >
-          <Ionicons name="trending-up" size={20} color={COLORS.primary} />
+      <LinearGradient colors={GRADIENTS.primary} style={styles.welcomeIcon}>
+        <Ionicons name="sparkles" size={40} color={COLORS.white} />
+      </LinearGradient>
+      <Text style={styles.welcomeTitle}>Cześć! Jestem Cenny Grosz 💰</Text>
+      <Text style={styles.welcomeText}>Twój osobisty asystent finansowy. Jak mogę Ci pomóc?</Text>
+      <View style={styles.suggestions}>
+        <TouchableOpacity style={styles.suggestion} onPress={() => setInputText('Jak mogę oszczędzać więcej pieniędzy?')}>
+          <LinearGradient colors={GRADIENTS.income} style={styles.suggestionIcon}>
+            <Ionicons name="trending-up" size={18} color={COLORS.white} />
+          </LinearGradient>
           <Text style={styles.suggestionText}>Porady oszczędnościowe</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.suggestion}
-          onPress={() => setInputText('Przeanalizuj moje wydatki')}
-        >
-          <Ionicons name="analytics" size={20} color={COLORS.primary} />
+        <TouchableOpacity style={styles.suggestion} onPress={() => setInputText('Przeanalizuj moje wydatki')}>
+          <LinearGradient colors={GRADIENTS.expense} style={styles.suggestionIcon}>
+            <Ionicons name="analytics" size={18} color={COLORS.white} />
+          </LinearGradient>
           <Text style={styles.suggestionText}>Analiza wydatków</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.suggestion}
-          onPress={() => setInputText('Jak stworzyć budżet domowy?')}
-        >
-          <Ionicons name="wallet" size={20} color={COLORS.primary} />
+        <TouchableOpacity style={styles.suggestion} onPress={() => setInputText('Jak stworzyć budżet domowy?')}>
+          <LinearGradient colors={GRADIENTS.sunset} style={styles.suggestionIcon}>
+            <Ionicons name="wallet" size={18} color={COLORS.white} />
+          </LinearGradient>
           <Text style={styles.suggestionText}>Planowanie budżetu</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.suggestion}
-          onPress={() => setInputText('Podaj mi podsumowanie moich finansów')}
-        >
-          <Ionicons name="document-text" size={20} color={COLORS.primary} />
+        <TouchableOpacity style={styles.suggestion} onPress={() => setInputText('Podsumowanie moich finansów')}>
+          <LinearGradient colors={GRADIENTS.ocean} style={styles.suggestionIcon}>
+            <Ionicons name="document-text" size={18} color={COLORS.white} />
+          </LinearGradient>
           <Text style={styles.suggestionText}>Podsumowanie finansów</Text>
         </TouchableOpacity>
       </View>
@@ -169,54 +126,56 @@ export default function AssistantScreen() {
 
   if (isLoadingHistory) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{PL.aiAssistant}</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Ładowanie historii...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <LinearGradient colors={['#1A1A2E', '#16213E']} style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.white} />
+          <Text style={styles.loadingText}>Ładowanie...</Text>
+        </LinearGradient>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>{PL.aiAssistant}</Text>
-        <View style={styles.headerBadge}>
-          <Text style={styles.headerBadgeText}>AI</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={['#1A1A2E', '#16213E']} style={styles.headerGradient}>
+        <SafeAreaView edges={['top']} style={styles.safeArea}>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.title}>{PL.aiAssistant}</Text>
+              <Text style={styles.subtitle}>Powered by GPT-5.2</Text>
+            </View>
+            <View style={styles.aiBadge}>
+              <Ionicons name="sparkles" size={14} color={COLORS.white} />
+              <Text style={styles.aiBadgeText}>AI</Text>
+            </View>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+
+      <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        <View style={styles.content}>
+          {messages.length === 0 ? (
+            renderWelcome()
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.messagesList}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            />
+          )}
         </View>
-      </View>
 
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        {/* Messages */}
-        {messages.length === 0 ? (
-          renderWelcome()
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesList}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          />
-        )}
-
-        {/* Loading indicator */}
         {isLoading && (
           <View style={styles.typingIndicator}>
-            <View style={styles.avatarContainer}>
-              <Text style={styles.avatarEmoji}>💰</Text>
-            </View>
+            <LinearGradient colors={GRADIENTS.primary} style={styles.typingAvatar}>
+              <Ionicons name="sparkles" size={14} color={COLORS.white} />
+            </LinearGradient>
             <View style={styles.typingBubble}>
               <ActivityIndicator size="small" color={COLORS.primary} />
               <Text style={styles.typingText}>{PL.thinking}</Text>
@@ -224,220 +183,76 @@ export default function AssistantScreen() {
           </View>
         )}
 
-        {/* Input */}
         <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder={PL.askQuestion}
-            placeholderTextColor={COLORS.textLight}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
-            onPress={sendMessage}
-            disabled={!inputText.trim() || isLoading}
-          >
-            <Ionicons
-              name="send"
-              size={20}
-              color={inputText.trim() && !isLoading ? COLORS.white : COLORS.textLight}
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder={PL.askQuestion}
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              maxLength={500}
             />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
+              onPress={sendMessage}
+              disabled={!inputText.trim() || isLoading}
+            >
+              <LinearGradient
+                colors={inputText.trim() && !isLoading ? GRADIENTS.primary : [COLORS.border, COLORS.border]}
+                style={styles.sendGradient}
+              >
+                <Ionicons name="send" size={18} color={inputText.trim() && !isLoading ? COLORS.white : COLORS.textMuted} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  headerBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  headerBadgeText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: COLORS.textLight,
-  },
-  welcomeContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: SPACING.lg,
-  },
-  welcomeIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.primaryLight + '30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  welcomeEmoji: {
-    fontSize: 40,
-  },
-  welcomeTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-  },
-  suggestionsList: {
-    width: '100%',
-    gap: SPACING.sm,
-  },
-  suggestion: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.sm,
-    ...SHADOWS.sm,
-  },
-  suggestionText: {
-    fontSize: 14,
-    color: COLORS.text,
-    flex: 1,
-  },
-  messagesList: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.lg,
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    marginBottom: SPACING.md,
-    alignItems: 'flex-end',
-  },
-  userMessage: {
-    justifyContent: 'flex-end',
-  },
-  aiMessage: {
-    justifyContent: 'flex-start',
-  },
-  avatarContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primaryLight + '30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.xs,
-  },
-  avatarEmoji: {
-    fontSize: 18,
-  },
-  messageBubble: {
-    maxWidth: '75%',
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  userBubble: {
-    backgroundColor: COLORS.primary,
-    borderBottomRightRadius: 4,
-  },
-  aiBubble: {
-    backgroundColor: COLORS.white,
-    borderBottomLeftRadius: 4,
-    ...SHADOWS.sm,
-  },
-  messageText: {
-    fontSize: 15,
-    color: COLORS.text,
-    lineHeight: 22,
-  },
-  userMessageText: {
-    color: COLORS.white,
-  },
-  typingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    padding: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    gap: SPACING.sm,
-    ...SHADOWS.sm,
-  },
-  typingText: {
-    fontSize: 14,
-    color: COLORS.textLight,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    gap: SPACING.sm,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: 16,
-    color: COLORS.text,
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: COLORS.border,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.md },
+  loadingText: { fontSize: 14, color: 'rgba(255,255,255,0.7)' },
+  headerGradient: { paddingBottom: 10 },
+  safeArea: { paddingHorizontal: SPACING.lg },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.sm, paddingBottom: SPACING.sm },
+  title: { fontSize: 24, fontWeight: '700', color: COLORS.white },
+  subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+  aiBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, gap: 4 },
+  aiBadgeText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
+  keyboardView: { flex: 1 },
+  content: { flex: 1, backgroundColor: COLORS.background, borderTopLeftRadius: BORDER_RADIUS.xl, borderTopRightRadius: BORDER_RADIUS.xl, marginTop: -10 },
+  welcomeContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  welcomeIcon: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.md },
+  welcomeTitle: { fontSize: 22, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.xs, textAlign: 'center' },
+  welcomeText: { fontSize: 14, color: COLORS.textLight, textAlign: 'center', marginBottom: SPACING.xl },
+  suggestions: { width: '100%', gap: SPACING.sm },
+  suggestion: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, padding: SPACING.md, borderRadius: BORDER_RADIUS.lg, gap: SPACING.md },
+  suggestionIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  suggestionText: { fontSize: 14, color: COLORS.text, fontWeight: '500', flex: 1 },
+  messagesList: { padding: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: SPACING.md },
+  messageContainer: { flexDirection: 'row', marginBottom: SPACING.md, alignItems: 'flex-end' },
+  userMessageContainer: { justifyContent: 'flex-end' },
+  aiMessageContainer: { justifyContent: 'flex-start' },
+  avatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: SPACING.xs },
+  messageBubble: { maxWidth: '78%', borderRadius: BORDER_RADIUS.lg },
+  userBubble: { borderBottomRightRadius: 4, overflow: 'hidden' },
+  userBubbleGradient: { padding: SPACING.md },
+  aiBubble: { backgroundColor: COLORS.white, borderBottomLeftRadius: 4, padding: SPACING.md },
+  userMessageText: { fontSize: 15, color: COLORS.white, lineHeight: 22 },
+  aiMessageText: { fontSize: 15, color: COLORS.text, lineHeight: 22 },
+  typingIndicator: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm },
+  typingAvatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: SPACING.xs },
+  typingBubble: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, padding: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: BORDER_RADIUS.lg, gap: SPACING.sm },
+  typingText: { fontSize: 14, color: COLORS.textLight },
+  inputContainer: { padding: SPACING.md, paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.md, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.borderLight },
+  inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm },
+  input: { flex: 1, backgroundColor: COLORS.background, borderRadius: BORDER_RADIUS.lg, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 16, color: COLORS.text, maxHeight: 100, minHeight: 44 },
+  sendButton: { borderRadius: 22, overflow: 'hidden' },
+  sendButtonDisabled: {},
+  sendGradient: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 });
