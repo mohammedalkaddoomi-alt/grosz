@@ -65,30 +65,57 @@ export default function Chat() {
     if (!input.trim() || loading) return;
 
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: input.trim() };
+    // Optimistic update
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setLoading(true);
     scrollToBottom();
 
-    try {
-      const res = await api.chat(userMsg.content);
-      const aiContent = res.response || "Przepraszam, nie zrozumiałem pytania. Spróbuj jeszcze raz.";
+    // Create placeholder for AI response
+    const aiMsgId = (Date.now() + 1).toString();
+    const aiMsg: Message = {
+      id: aiMsgId,
+      role: 'assistant',
+      content: '...' // Initial loading state
+    };
+    setMessages((prev) => [...prev, aiMsg]);
 
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: aiContent
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+    try {
+      let isFirstChunk = true;
+
+      await api.chatStream(userMsg.content, (chunk) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          // If this is the very first chunk, replace "..." with the chunk
+          // If not, append
+          if (last.id === aiMsgId) {
+            const newContent = isFirstChunk ? chunk : last.content + chunk;
+            isFirstChunk = false;
+            return [...prev.slice(0, -1), { ...last, content: newContent }];
+          }
+          return prev;
+        });
+        scrollToBottom();
+      });
+
     } catch (e) {
       console.error(e);
       const fallback = 'Asystent AI jest chwilowo niedostępny. Sprawdź połączenie i spróbuj ponownie za chwilę.';
-      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: fallback }]);
-      try {
-        await api.saveChatHistory(userMsg.content, fallback);
-      } catch (saveError) {
-        console.error('Failed to save fallback chat history:', saveError);
-      }
+      setMessages((prev) => {
+        // Replace the "..." or partial response with fallback if it failed completely? 
+        // Or just append error? 
+        // Most user friendly: if we got SOME content, keep it and add error.
+        // But for simplicity, if it fails, we usually just show error.
+        // Let's replace the last message if it's the AI placeholder
+        const last = prev[prev.length - 1];
+        if (last.id === aiMsgId) {
+          return [...prev.slice(0, -1), { ...last, content: fallback }];
+        }
+        return [...prev, { id: 'error-' + Date.now(), role: 'assistant', content: fallback }];
+      });
+
+      // Fallback save to history if we want (but api.chatStream handles success save)
+      // If it failed, we probably don't want to save partial garbage.
     } finally {
       setLoading(false);
       scrollToBottom();

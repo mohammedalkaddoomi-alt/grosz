@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useStore } from '../../src/store/store';
 import { BorderRadius, Elevation, Spacing, Typography } from '../../src/constants/theme';
 import { AnimatedButton, AnimatedCard, AnimatedNumber } from '../../src/components/AnimatedComponents';
@@ -14,13 +13,14 @@ import { SubscriptionCard } from '../../components/SubscriptionCard';
 import { AddSubscriptionModal } from '../../components/AddSubscriptionModal';
 import { Subscription, Transaction, Wallet } from '../../src/types';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import { useDrawer } from '../../src/contexts/DrawerContext';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
 
 interface QuickAction {
   id: string;
   label: string;
-  caption: string;
   icon: keyof typeof Ionicons.glyphMap;
-  gradient: [string, string];
+  color: string;
   onPress: () => void;
 }
 
@@ -42,6 +42,7 @@ const getGreeting = () => {
 export default function Home() {
   const router = useRouter();
   const { colors, settings, fontFamily, scaleFont } = useTheme();
+  const { openDrawer } = useDrawer();
   const {
     user,
     stats,
@@ -78,46 +79,44 @@ export default function Home() {
   };
 
   const recentTransactions = transactions.slice(0, 5);
-  const sharedWalletCount = wallets.filter((wallet: Wallet) => wallet.is_shared).length;
 
   const quickActions: QuickAction[] = [
     {
       id: 'add',
       label: 'Nowy wpis',
-      caption: 'Przychód lub wydatek',
       icon: 'add-circle-outline',
-      gradient: [colors.primary, colors.accent],
+      color: colors.primary,
       onPress: () => router.push('/add'),
     },
     {
       id: 'planner',
-      label: 'Planer czasu',
-      caption: 'Ile godzin pracy',
+      label: 'Ile godzin?',
       icon: 'time-outline',
-      gradient: [colors.income, colors.accent],
+      color: colors.income,
       onPress: () => setShowCalculator(true),
     },
     {
       id: 'ai',
-      label: 'Asystent AI',
-      caption: 'Analiza finansów',
+      label: 'AI',
       icon: 'sparkles-outline',
-      gradient: [colors.info, colors.primary],
+      color: colors.info,
       onPress: () => router.push('/chat'),
     },
     {
       id: 'wallets',
       label: 'Portfele',
-      caption: 'Konta i udziały',
       icon: 'wallet-outline',
-      gradient: [colors.warning, colors.secondary],
+      color: colors.warning,
       onPress: () => router.push('/wallets'),
     },
+    {
+      id: 'goals',
+      label: 'Cele',
+      icon: 'flag-outline',
+      color: colors.shared,
+      onPress: () => router.push('/goals'),
+    },
   ];
-
-  const openComingSoon = () => {
-    Alert.alert('Wkrótce', 'Ta funkcja będzie dostępna w kolejnej iteracji.');
-  };
 
   const parseDate = (value: string) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -136,12 +135,10 @@ export default function Home() {
   const getNextPaymentDate = (dateValue: string, cycle: Subscription['billing_cycle']) => {
     const date = parseDate(dateValue);
     date.setHours(0, 0, 0, 0);
-
     if (cycle === 'weekly') {
       date.setDate(date.getDate() + 7);
       return formatDateOnly(date);
     }
-
     const currentDay = date.getDate();
     date.setDate(1);
     date.setMonth(date.getMonth() + (cycle === 'monthly' ? 1 : 12));
@@ -155,144 +152,117 @@ export default function Home() {
       const nextPaymentDate = getNextPaymentDate(subscription.next_payment_date, subscription.billing_cycle);
       await updateSubscription(subscription.id, { next_payment_date: nextPaymentDate });
       Alert.alert('Zaktualizowano', `Kolejna płatność: ${parseDate(nextPaymentDate).toLocaleDateString('pl-PL')}`);
-    } catch (error) {
-      console.error('Failed to update subscription:', error);
+    } catch {
       Alert.alert('Błąd', 'Nie udało się zaktualizować subskrypcji');
     }
   };
 
   const confirmDeleteSubscription = (subscription: Subscription) => {
-    Alert.alert(
-      'Usuń subskrypcję',
-      `Czy na pewno chcesz usunąć "${subscription.name}"?`,
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        {
-          text: 'Usuń',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteSubscription(subscription.id);
-            } catch (error) {
-              console.error('Failed to delete subscription:', error);
-              Alert.alert('Błąd', 'Nie udało się usunąć subskrypcji');
-            }
-          },
+    Alert.alert('Usuń subskrypcję', `Czy na pewno chcesz usunąć "${subscription.name}"?`, [
+      { text: 'Anuluj', style: 'cancel' },
+      {
+        text: 'Usuń',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteSubscription(subscription.id);
+          } catch {
+            Alert.alert('Błąd', 'Nie udało się usunąć subskrypcji');
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const openSubscriptionActions = (subscription: Subscription) => {
-    Alert.alert(
-      subscription.name,
-      'Wybierz akcję dla subskrypcji',
-      [
-        {
-          text: 'Oznacz jako opłaconą',
-          onPress: () => {
-            void markSubscriptionAsPaid(subscription);
-          },
-        },
-        {
-          text: 'Usuń',
-          style: 'destructive',
-          onPress: () => confirmDeleteSubscription(subscription),
-        },
-        { text: 'Anuluj', style: 'cancel' },
-      ],
-    );
+    Alert.alert(subscription.name, 'Wybierz akcję dla subskrypcji', [
+      { text: 'Oznacz jako opłaconą', onPress: () => void markSubscriptionAsPaid(subscription) },
+      { text: 'Usuń', style: 'destructive', onPress: () => confirmDeleteSubscription(subscription) },
+      { text: 'Anuluj', style: 'cancel' },
+    ]);
   };
+
+  const monthResult = (stats?.month_income || 0) - (stats?.month_expenses || 0);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {settings.wallpaper && (
-        <Image
-          source={{ uri: settings.wallpaper.uri }}
-          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-          blurRadius={settings.wallpaper.blur}
-        />
-      )}
+      {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         contentContainerStyle={styles.scrollContent}
       >
-        <Animated.View entering={FadeIn.duration(500)} style={styles.heroBlock}>
-          <LinearGradient
-            colors={[colors.primary, colors.accent]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
-          >
-            <View style={styles.heroTopRow}>
-              <View style={styles.heroTextWrap}>
-                <Text style={styles.heroGreeting}>{getGreeting()}, {user?.name?.split(' ')[0] || 'Użytkowniku'}</Text>
-                <Text style={styles.heroDate}>
-                  {new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </Text>
-              </View>
-              <AnimatedButton
-                style={styles.heroIconButton}
-                hapticFeedback="light"
-                onPress={() => router.push('/profile')}
-              >
-                <Ionicons name="person-circle-outline" size={28} color="#FFFFFF" />
-              </AnimatedButton>
+        {/* ── Header with Hamburger ── */}
+        <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
+          <TouchableOpacity onPress={openDrawer} style={styles.hamburger} activeOpacity={0.7}>
+            <Ionicons name="menu-outline" size={26} color={colors.text} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.greeting}>{getGreeting()}</Text>
+            <Text style={styles.userName}>{user?.name?.split(' ')[0] || 'Użytkowniku'}</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/profile')} style={styles.profileButton} activeOpacity={0.7}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>{user?.name?.charAt(0)?.toUpperCase() || 'U'}</Text>
             </View>
-
-            <View style={styles.balanceWrap}>
-              <Text style={styles.balanceLabel}>Saldo łączne</Text>
-              <AnimatedNumber
-                value={stats?.total_balance || 0}
-                formatter={(value) => formatMoney(value)}
-                style={styles.balanceValue}
-              />
-            </View>
-
-            <View style={styles.heroStatsRow}>
-              <View style={styles.heroStatChip}>
-                <Text style={styles.heroStatLabel}>Portfele</Text>
-                <Text style={styles.heroStatValue}>{wallets.length}</Text>
-              </View>
-              <View style={styles.heroStatChip}>
-                <Text style={styles.heroStatLabel}>Wspólne</Text>
-                <Text style={styles.heroStatValue}>{sharedWalletCount}</Text>
-              </View>
-              <View style={styles.heroStatChip}>
-                <Text style={styles.heroStatLabel}>Mies. wynik</Text>
-                <Text style={styles.heroStatValue}>
-                  {formatMoney((stats?.month_income || 0) - (stats?.month_expenses || 0))}
-                </Text>
-              </View>
-            </View>
-          </LinearGradient>
+          </TouchableOpacity>
         </Animated.View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Szybkie akcje</Text>
-            <TouchableOpacity onPress={openComingSoon}>
-              <Text style={styles.sectionLink}>Więcej</Text>
-            </TouchableOpacity>
+        {/* ── Balance Card — Flat & Clean ── */}
+        <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.balanceCard}>
+          <Text style={styles.balanceLabel}>Saldo łączne</Text>
+          <AnimatedNumber
+            value={stats?.total_balance || 0}
+            formatter={(value) => formatMoney(value)}
+            style={styles.balanceValue}
+          />
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Ionicons name="trending-up-outline" size={16} color={colors.income} />
+              <Text style={[styles.statValue, { color: colors.income }]}>
+                {formatMoney(stats?.month_income || 0)}
+              </Text>
+            </View>
+            <View style={styles.statDot} />
+            <View style={styles.statItem}>
+              <Ionicons name="trending-down-outline" size={16} color={colors.expense} />
+              <Text style={[styles.statValue, { color: colors.expense }]}>
+                {formatMoney(stats?.month_expenses || 0)}
+              </Text>
+            </View>
+            <View style={styles.statDot} />
+            <View style={styles.statItem}>
+              <Ionicons name="analytics-outline" size={16} color={monthResult >= 0 ? colors.income : colors.expense} />
+              <Text style={[styles.statValue, { color: monthResult >= 0 ? colors.income : colors.expense }]}>
+                {formatMoney(monthResult)}
+              </Text>
+            </View>
           </View>
+        </Animated.View>
 
-          <View style={styles.quickActionsGrid}>
+        {/* ── Quick Actions — Horizontal Scroll ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Szybkie akcje</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickActionsScroll}
+          >
             {quickActions.map((action, index) => (
-              <Animated.View key={action.id} entering={FadeInDown.delay(120 + index * 70).duration(500)} style={styles.quickActionCell}>
-                <AnimatedButton style={styles.quickActionCard} onPress={action.onPress} hapticFeedback="light">
-                  <LinearGradient colors={action.gradient} style={styles.quickActionIconWrap}>
-                    <Ionicons name={action.icon} size={20} color="#FFFFFF" />
-                  </LinearGradient>
-                  <Text style={styles.quickActionTitle}>{action.label}</Text>
-                  <Text style={styles.quickActionCaption}>{action.caption}</Text>
+              <Animated.View key={action.id} entering={FadeInRight.delay(150 + index * 60).duration(400)}>
+                <AnimatedButton style={styles.quickActionPill} onPress={action.onPress} hapticFeedback="light">
+                  <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}14` }]}>
+                    <Ionicons name={action.icon} size={18} color={action.color} />
+                  </View>
+                  <Text style={styles.quickActionLabel}>{action.label}</Text>
                 </AnimatedButton>
               </Animated.View>
             ))}
-          </View>
+          </ScrollView>
         </View>
 
+        {/* ── Subscriptions ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Subskrypcje</Text>
@@ -315,7 +285,7 @@ export default function Home() {
           ) : (
             <AnimatedCard entrance="slideUp" style={styles.emptyCard}>
               <View style={[styles.emptyIconCircle, { backgroundColor: colors.incomeLight }]}>
-                <Ionicons name="repeat-outline" size={24} color={colors.income} />
+                <Ionicons name="repeat-outline" size={22} color={colors.income} />
               </View>
               <Text style={styles.emptyTitle}>Brak aktywnych subskrypcji</Text>
               <Text style={styles.emptyDescription}>Dodaj je, aby pilnować stałych kosztów.</Text>
@@ -326,6 +296,7 @@ export default function Home() {
           )}
         </View>
 
+        {/* ── Recent Transactions ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Ostatnie transakcje</Text>
@@ -345,6 +316,7 @@ export default function Home() {
                     key={tx.id}
                     style={[styles.transactionRow, index !== recentTransactions.length - 1 && styles.transactionRowBorder]}
                     onPress={() => router.push('/transactions')}
+                    activeOpacity={0.7}
                   >
                     <View
                       style={[
@@ -352,7 +324,11 @@ export default function Home() {
                         { backgroundColor: isIncome ? colors.incomeLight : colors.expenseLight },
                       ]}
                     >
-                      <Text style={styles.transactionEmoji}>{tx.emoji || (isIncome ? '💸' : '💳')}</Text>
+                      <Ionicons
+                        name={isIncome ? 'arrow-down-outline' : 'arrow-up-outline'}
+                        size={16}
+                        color={isIncome ? colors.income : colors.expense}
+                      />
                     </View>
                     <View style={styles.transactionMeta}>
                       <Text style={styles.transactionTitle}>{tx.category || 'Transakcja'}</Text>
@@ -369,6 +345,8 @@ export default function Home() {
             )}
           </View>
         </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       <WorkCalculatorModal
@@ -408,102 +386,114 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       ...StyleSheet.absoluteFillObject,
     },
     scrollContent: {
-      paddingBottom: 120,
+      paddingBottom: 20,
     },
-    heroBlock: {
-      marginHorizontal: Spacing.xl,
-      marginTop: Spacing.md,
-      marginBottom: Spacing.xxl,
-    },
-    heroCard: {
-      borderRadius: 30,
-      paddingHorizontal: Spacing.xxl,
-      paddingVertical: Spacing.xxl,
-      ...Elevation.level5,
-    },
-    heroTopRow: {
+
+    /* ── Header ── */
+    header: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.md,
     },
-    heroTextWrap: {
+    hamburger: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: BorderRadius.md,
+    },
+    headerCenter: {
       flex: 1,
-      paddingRight: Spacing.sm,
+      marginLeft: Spacing.sm,
     },
-    heroGreeting: {
-      ...Typography.h3,
-      color: '#FFFFFF',
-      fontWeight: '800',
-      letterSpacing: -0.3,
-      fontFamily,
-    },
-    heroDate: {
-      marginTop: 4,
+    greeting: {
       fontSize: scaleFont(13),
-      color: 'rgba(255,255,255,0.82)',
-      textTransform: 'capitalize',
+      color: colors.textLight,
       fontWeight: '500',
       fontFamily,
     },
-    heroIconButton: {
-      width: 44,
-      height: 44,
-      borderRadius: BorderRadius.full,
+    userName: {
+      fontSize: scaleFont(20),
+      color: colors.text,
+      fontWeight: '700',
+      letterSpacing: -0.4,
+      fontFamily,
+    },
+    profileButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+    },
+    profileAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.16)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.22)',
     },
-    balanceWrap: {
-      marginTop: Spacing.xxl,
+    profileAvatarText: {
+      fontSize: scaleFont(16),
+      fontWeight: '700',
+      color: '#FFFFFF',
+      fontFamily,
+    },
+
+    /* ── Balance Card ── */
+    balanceCard: {
+      marginHorizontal: Spacing.xl,
+      marginTop: Spacing.sm,
+      marginBottom: Spacing.xxl,
+      backgroundColor: colors.card,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.xxl,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      ...Elevation.level2,
     },
     balanceLabel: {
-      fontSize: scaleFont(13),
-      color: 'rgba(255,255,255,0.78)',
+      fontSize: scaleFont(12),
+      color: colors.textMuted,
       fontWeight: '600',
       textTransform: 'uppercase',
-      letterSpacing: 0.6,
+      letterSpacing: 0.8,
       fontFamily,
     },
     balanceValue: {
       marginTop: Spacing.sm,
-      fontSize: scaleFont(40),
-      lineHeight: scaleFont(46),
-      color: '#FFFFFF',
-      fontFamily: fontFamily || 'SpaceMono',
+      fontSize: scaleFont(36),
+      lineHeight: scaleFont(42),
+      color: colors.text,
+      fontWeight: '800',
       letterSpacing: -1.2,
-    },
-    heroStatsRow: {
-      marginTop: Spacing.xl,
-      flexDirection: 'row',
-      gap: Spacing.sm,
-    },
-    heroStatChip: {
-      flex: 1,
-      borderRadius: BorderRadius.lg,
-      backgroundColor: 'rgba(255,255,255,0.14)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.2)',
-      paddingHorizontal: Spacing.sm,
-      paddingVertical: 10,
-    },
-    heroStatLabel: {
-      fontSize: scaleFont(10),
-      color: 'rgba(255,255,255,0.72)',
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      fontWeight: '700',
       fontFamily,
     },
-    heroStatValue: {
-      marginTop: 4,
-      fontSize: scaleFont(14),
-      color: '#FFFFFF',
-      fontWeight: '700',
+    statsRow: {
+      marginTop: Spacing.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    statItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    statValue: {
+      fontSize: scaleFont(13),
+      fontWeight: '600',
       letterSpacing: -0.2,
       fontFamily,
     },
+    statDot: {
+      width: 3,
+      height: 3,
+      borderRadius: 1.5,
+      backgroundColor: colors.border,
+      marginHorizontal: Spacing.sm,
+    },
+
+    /* ── Sections ── */
     section: {
       marginBottom: Spacing.xxl,
     },
@@ -512,65 +502,57 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.md,
     },
     sectionTitle: {
-      ...Typography.h3,
+      fontSize: scaleFont(17),
       color: colors.text,
-      fontSize: scaleFont(21),
-      letterSpacing: -0.5,
+      fontWeight: '700',
+      letterSpacing: -0.3,
+      paddingHorizontal: Spacing.xl,
       fontFamily,
     },
     sectionLink: {
       color: colors.primary,
       fontSize: scaleFont(13),
-      fontWeight: '700',
-      letterSpacing: 0.2,
-      textTransform: 'uppercase',
+      fontWeight: '600',
       fontFamily,
     },
-    quickActionsGrid: {
-      marginHorizontal: Spacing.xl,
+
+    /* ── Quick Actions ── */
+    quickActionsScroll: {
+      paddingHorizontal: Spacing.xl,
+      gap: Spacing.sm,
+      paddingTop: Spacing.sm,
+    },
+    quickActionPill: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'space-between',
-      rowGap: Spacing.md,
-    },
-    quickActionCell: {
-      width: '48.2%',
-    },
-    quickActionCard: {
-      borderRadius: BorderRadius.xl,
+      alignItems: 'center',
       backgroundColor: colors.card,
+      borderRadius: BorderRadius.pill,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
       borderWidth: 1,
       borderColor: colors.borderLight,
-      padding: Spacing.lg,
-      minHeight: 132,
-      ...Elevation.level2,
+      ...Elevation.level1,
     },
-    quickActionIconWrap: {
-      width: 42,
-      height: 42,
-      borderRadius: 14,
+    quickActionIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: Spacing.md,
+      marginRight: Spacing.sm,
     },
-    quickActionTitle: {
-      fontSize: scaleFont(15),
-      fontWeight: '800',
+    quickActionLabel: {
+      fontSize: scaleFont(14),
+      fontWeight: '600',
       color: colors.text,
-      letterSpacing: -0.3,
+      letterSpacing: -0.2,
       fontFamily,
     },
-    quickActionCaption: {
-      marginTop: 4,
-      fontSize: scaleFont(12),
-      color: colors.textLight,
-      lineHeight: scaleFont(16),
-      fontWeight: '500',
-      fontFamily,
-    },
+
+    /* ── Empty State ── */
     sectionList: {
       marginHorizontal: Spacing.xl,
     },
@@ -583,12 +565,12 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.xxl,
       alignItems: 'center',
-      ...Elevation.level2,
+      ...Elevation.level1,
     },
     emptyIconCircle: {
-      width: 52,
-      height: 52,
-      borderRadius: BorderRadius.full,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: Spacing.md,
@@ -616,11 +598,11 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
     emptyButtonText: {
       color: '#FFFFFF',
       fontSize: scaleFont(13),
-      fontWeight: '700',
-      textTransform: 'uppercase',
-      letterSpacing: 0.4,
+      fontWeight: '600',
       fontFamily,
     },
+
+    /* ── Transactions ── */
     transactionsCard: {
       marginHorizontal: Spacing.xl,
       borderRadius: BorderRadius.xl,
@@ -628,7 +610,7 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       borderWidth: 1,
       borderColor: colors.borderLight,
       paddingHorizontal: Spacing.lg,
-      ...Elevation.level2,
+      ...Elevation.level1,
     },
     noDataText: {
       ...Typography.caption,
@@ -647,14 +629,11 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       borderBottomColor: colors.borderLight,
     },
     transactionIconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
+      width: 36,
+      height: 36,
+      borderRadius: 12,
       justifyContent: 'center',
       alignItems: 'center',
-    },
-    transactionEmoji: {
-      fontSize: scaleFont(20),
     },
     transactionMeta: {
       flex: 1,
@@ -664,7 +643,7 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
     transactionTitle: {
       fontSize: scaleFont(15),
       color: colors.text,
-      fontWeight: '700',
+      fontWeight: '600',
       letterSpacing: -0.2,
       fontFamily,
     },
@@ -677,7 +656,7 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
     },
     transactionAmount: {
       fontSize: scaleFont(15),
-      fontWeight: '800',
+      fontWeight: '700',
       letterSpacing: -0.2,
       fontFamily,
     },

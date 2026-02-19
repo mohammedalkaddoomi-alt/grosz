@@ -1,20 +1,26 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, RefreshControl, Image } from 'react-native';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/store';
 import { Colors, Gradients, Shadows, BorderRadius, Spacing, Typography } from '../../src/constants/theme';
 import { Wallet } from '../../src/types';
 import { AnimatedCard, AnimatedButton } from '../../src/components/AnimatedComponents';
 import { WorkCalculatorModal } from '../../src/components/WorkCalculatorModal';
 import { WageSettingsModal } from '../../src/components/WageSettingsModal';
+import { useDrawer } from '../../src/contexts/DrawerContext';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
+import { supabase } from '../../src/services/supabase';
 
 const WALLET_EMOJIS = ['💰', '💳', '🏦', '💵', '🪙', '💎', '🏠', '🚗', '✈️', '🎓', '👶', '🐕', '🎁', '💒', '🏖️', '🎮', '💼', '🛒', '🍔', '☕'];
 
 export default function Wallets() {
   const { colors, settings } = useTheme();
+  const { openDrawer } = useDrawer();
+  const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const {
     wallets,
@@ -31,6 +37,7 @@ export default function Wallets() {
     acceptWalletInvitation,
     rejectWalletInvitation,
     user,
+    transactions,
     wageSettings,
     saveWageSettings,
     calculateWorkTime
@@ -72,6 +79,55 @@ export default function Wallets() {
     await Promise.all([loadData(), loadWalletInvitations()]);
     setRefreshing(false);
   };
+
+  // ===== REAL-TIME: Subscribe to transaction/member changes on shared wallets =====
+  const sharedWalletIdKey = useMemo(
+    () => wallets.filter((w: Wallet) => w.is_shared).map((w: Wallet) => w.id).join(','),
+    [wallets]
+  );
+
+  useEffect(() => {
+    if (!sharedWalletIdKey) return;
+    const sharedWalletIds = sharedWalletIdKey.split(',');
+
+    const channel = supabase.channel('shared-wallets-realtime')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'transactions',
+        filter: `wallet_id=in.(${sharedWalletIds.join(',')})`,
+      }, () => {
+        loadData();
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'wallet_members',
+        filter: `wallet_id=in.(${sharedWalletIds.join(',')})`,
+      }, () => {
+        loadData();
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'wallet_invitations',
+      }, () => {
+        loadWalletInvitations();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sharedWalletIdKey]);
+
+  // Get transactions for the selected shared wallet
+  const selectedWalletTransactions = useMemo(() => {
+    if (!selectedWallet?.is_shared) return [];
+    return (transactions || [])
+      .filter((t: any) => t.wallet_id === selectedWallet?.id)
+      .slice(0, 10);
+  }, [selectedWallet?.id, selectedWallet?.is_shared, transactions]);
 
   const formatMoney = (n: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', minimumFractionDigits: 0 }).format(n);
 
@@ -281,16 +337,13 @@ export default function Wallets() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Wallpaper Background */}
-      {settings.wallpaper && (
-        <Image
-          source={{ uri: settings.wallpaper.uri }}
-          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-          blurRadius={settings.wallpaper.blur}
-        />
-      )}
+      {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
       {/* Header */}
       <View style={styles.header}>
-        <View>
+        <TouchableOpacity onPress={openDrawer} style={styles.hamburger} activeOpacity={0.7}>
+          <Ionicons name="menu-outline" size={26} color={colors.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Portfele</Text>
           <Text style={styles.subtitle}>Zarządzaj swoimi finansami</Text>
         </View>
@@ -412,7 +465,7 @@ export default function Wallets() {
           )}
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
 
       {/* Create Wallet Modal */}
@@ -509,6 +562,21 @@ export default function Wallets() {
               </View>
             </View>
 
+            {/* Quick Add Transaction Button */}
+            <TouchableOpacity
+              style={styles.quickAddBtn}
+              onPress={() => {
+                setActiveWallet(selectedWallet);
+                setShowManageModal(false);
+                router.push('/(tabs)/add');
+              }}
+            >
+              <LinearGradient colors={Gradients.primary} style={styles.quickAddGradient}>
+                <Ionicons name="add-circle" size={22} color={Colors.white} />
+                <Text style={styles.quickAddText}>Dodaj transakcję</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
             {/* Work Calculator Button for Shared Wallet */}
             <TouchableOpacity
               style={styles.calculatorBtn}
@@ -519,7 +587,7 @@ export default function Wallets() {
             >
               <LinearGradient colors={Gradients.blue} style={styles.calculatorBtnGradient}>
                 <Ionicons name="calculator" size={20} color={colors.white} />
-                <Text style={styles.calculatorBtnText}>Kalkulator pracy</Text>
+                <Text style={styles.calculatorBtnText}>Ile godzin? ⏱️</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -552,27 +620,27 @@ export default function Wallets() {
             <View style={styles.membersList}>
               {/* Owner */}
               <View style={styles.memberItem}>
-              <View style={styles.memberAvatar}>
-                <Text style={styles.memberAvatarText}>
+                <View style={styles.memberAvatar}>
+                  <Text style={styles.memberAvatarText}>
                     {selectedWallet?.owner_id === user?.id
                       ? (user?.name?.charAt(0) || '?')
                       : (selectedWallet?.owner_details?.name?.charAt(0) || '?')}
-                </Text>
-              </View>
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>
+                  </Text>
+                </View>
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>
                     {selectedWallet?.owner_id === user?.id
                       ? user?.name
                       : (selectedWallet?.owner_details?.name || 'Właściciel')}
-                </Text>
-                <Text style={styles.memberEmail}>
+                  </Text>
+                  <Text style={styles.memberEmail}>
                     {selectedWallet?.owner_id === user?.id
                       ? user?.email
                       : (selectedWallet?.owner_details?.email || '')}
-                </Text>
-              </View>
-              <View style={styles.ownerTag}>
-                <Text style={styles.ownerTagText}>Właściciel</Text>
+                  </Text>
+                </View>
+                <View style={styles.ownerTag}>
+                  <Text style={styles.ownerTagText}>Właściciel</Text>
                 </View>
               </View>
 
@@ -612,6 +680,45 @@ export default function Wallets() {
                 <Ionicons name="trash-outline" size={20} color={colors.expense} />
                 <Text style={styles.deleteWalletBtnText}>Usuń portfel</Text>
               </TouchableOpacity>
+            )}
+
+            {/* Recent Transactions with Attribution */}
+            {selectedWallet?.is_shared && (
+              <>
+                <Text style={styles.modalLabel}>Ostatnie transakcje</Text>
+                <View style={styles.membersList}>
+                  {selectedWalletTransactions.length > 0 ? (
+                    selectedWalletTransactions.map((tx: any) => (
+                      <View key={tx.id} style={styles.memberItem}>
+                        <View style={[
+                          styles.txTypeIcon,
+                          { backgroundColor: tx.type === 'income' ? colors.incomeLight : colors.expenseLight }
+                        ]}>
+                          <Text style={{ fontSize: 16 }}>{tx.emoji || (tx.type === 'income' ? '➕' : '➖')}</Text>
+                        </View>
+                        <View style={styles.memberInfo}>
+                          <Text style={styles.memberName} numberOfLines={1}>
+                            {tx.category || tx.note || (tx.type === 'income' ? 'Przychód' : 'Wydatek')}
+                          </Text>
+                          <Text style={styles.memberEmail}>
+                            {tx.user_name || 'Nieznany'} • {new Date(tx.created_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
+                          </Text>
+                        </View>
+                        <Text style={[
+                          styles.walletBalanceAmount,
+                          { fontSize: 15, color: tx.type === 'income' ? colors.income : colors.expense }
+                        ]}>
+                          {tx.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.noMembers}>
+                      <Text style={styles.noMembersText}>Brak transakcji</Text>
+                    </View>
+                  )}
+                </View>
+              </>
             )}
 
             {selectedWallet?.owner_id !== user?.id && (
@@ -672,7 +779,8 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  title: { ...Typography.h1, color: colors.text },
+  title: { ...Typography.h1, color: colors.text, fontSize: 24 },
+  hamburger: { width: 44, height: 44, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, marginRight: Spacing.sm },
   subtitle: { ...Typography.caption, color: colors.textLight, marginTop: 4 },
   addBtn: { borderRadius: BorderRadius.lg, overflow: 'hidden', ...Shadows.medium },
   addBtnGradient: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
@@ -1003,4 +1111,27 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   calculatorBtnText: { ...Typography.bodyBold, color: colors.white },
+  txTypeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  quickAddBtn: {
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden' as const,
+    marginBottom: Spacing.md,
+  },
+  quickAddGradient: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: Spacing.sm,
+    height: 52,
+  },
+  quickAddText: {
+    ...Typography.bodyBold,
+    color: colors.white,
+  },
 });

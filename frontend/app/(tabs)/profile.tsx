@@ -9,10 +9,13 @@ import { useStore } from '../../src/store/store';
 import { Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
 import { Wallet } from '../../src/types';
 import { AnimatedCard, AnimatedButton } from '../../src/components/AnimatedComponents';
+import { useDrawer } from '../../src/contexts/DrawerContext';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
 
 export default function Profile() {
   const router = useRouter();
   const { colors: Colors, settings } = useTheme();
+  const { openDrawer } = useDrawer();
   const styles = useMemo(() => getStyles(Colors), [Colors]);
   const { user, logout, stats, wallets } = useStore();
 
@@ -46,16 +49,14 @@ export default function Profile() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]} edges={['top']}>
       {/* Wallpaper Background */}
-      {settings.wallpaper && (
-        <Image
-          source={{ uri: settings.wallpaper.uri }}
-          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-          blurRadius={settings.wallpaper.blur}
-        />
-      )}
+      {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
+          <TouchableOpacity onPress={openDrawer} style={styles.hamburger} activeOpacity={0.7}>
+            <Ionicons name="menu-outline" size={26} color={Colors.text} />
+          </TouchableOpacity>
           <Text style={styles.title}>Profil</Text>
+          <View style={{ width: 44 }} />
         </View>
 
         {/* Profile Card */}
@@ -147,7 +148,7 @@ export default function Profile() {
           <Text style={styles.appVersion}>Wersja 1.0.0</Text>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -166,8 +167,9 @@ const getStyles = (Colors: any) => StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  header: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg },
-  title: { fontSize: 30, fontWeight: '800', color: Colors.text, letterSpacing: -0.8 },
+  header: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  hamburger: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  title: { fontSize: 24, fontWeight: '800', color: Colors.text, letterSpacing: -0.8 },
   profileCard: {
     alignItems: 'center',
     backgroundColor: Colors.card,

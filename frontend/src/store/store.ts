@@ -9,6 +9,10 @@ import { securityService } from '../services/securityService';
 const DEMO_MODE = process.env.EXPO_PUBLIC_DEMO_MODE === 'true';
 const DEMO_LOGIN_EMAIL = 'demo@cennygrosz.app';
 const DEMO_LOGIN_PASSWORD = 'demo123456';
+export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// Helper to check if current user is the in-app demo user (non-UUID ID)
+export const isDemoUser = (userId?: string | null): boolean => userId === DEMO_USER_ID;
 
 interface WalletWithMembers extends Wallet {
   members?: string[];
@@ -152,7 +156,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
     const normalizedEmail = email.trim().toLowerCase();
     if (normalizedEmail === DEMO_LOGIN_EMAIL && password === DEMO_LOGIN_PASSWORD) {
       const now = new Date().toISOString();
-      const demoUserId = 'demo-user';
+      const demoUserId = DEMO_USER_ID;
       const demoWalletId = 'demo-wallet-1';
       const demoWallet: WalletWithMembers = {
         id: demoWalletId,
@@ -305,7 +309,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
 
   loadData: async () => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
 
     try {
       const [walletsData, categories, wageSettings, subscriptions, walletInvitations] = await Promise.all([
@@ -373,13 +377,13 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
 
   loadCategories: async (type) => {
     const user = get().user;
-    if (!user) return [];
+    if (!user || isDemoUser(user.id)) return get().categories;
     return await db.getCategories(type, user.id) as Category[];
   },
 
   addCategory: async (data) => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
     await db.createCategory({ ...data, user_id: user.id });
     const categories = await db.getCategories(undefined, user.id) as Category[];
     set({ categories });
@@ -401,7 +405,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
   addTransaction: async (data) => {
     const user = get().user;
     const activeWallet = get().activeWallet;
-    if (!user?.id) return;
+    if (!user?.id || isDemoUser(user.id)) return;
 
     // Use active wallet if no wallet_id is provided
     const wallet_id = data.wallet_id || activeWallet?.id;
@@ -434,7 +438,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
   // Wallets
   createWallet: async (data) => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
     await db.createWallet(user.id, data);
     await get().loadData();
   },
@@ -457,7 +461,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
 
   loadWalletInvitations: async () => {
     const user = get().user;
-    if (!user) {
+    if (!user || isDemoUser(user.id)) {
       set({ walletInvitations: [] });
       return;
     }
@@ -492,7 +496,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
   // Goals
   loadGoals: async () => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
     const activeWallet = get().activeWallet;
     const goalsData = await db.getGoals(
       user.id,
@@ -533,14 +537,14 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
   // Wage Settings
   loadWageSettings: async () => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
     const wageSettings = await db.getWageSettings(user.id);
     set({ wageSettings });
   },
 
   saveWageSettings: async (settings) => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
 
     const updatedSettings = await db.saveWageSettings({
       ...settings,
@@ -563,7 +567,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
   // Subscriptions
   loadSubscriptions: async () => {
     const user = get().user;
-    if (!user) return;
+    if (!user || isDemoUser(user.id)) return;
     const subscriptions = await db.getSubscriptions(user.id);
     set({ subscriptions });
   },
@@ -577,12 +581,16 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
     } as any);
 
     if (newSubscription.reminder_enabled) {
-      await notificationService.scheduleSubscriptionReminder(
-        newSubscription.id,
-        newSubscription.name,
-        newSubscription.next_payment_date,
-        newSubscription.reminder_days_before || 1
-      );
+      try {
+        await notificationService.scheduleSubscriptionReminder(
+          newSubscription.id,
+          newSubscription.name,
+          newSubscription.next_payment_date,
+          newSubscription.reminder_days_before || 1
+        );
+      } catch (e) {
+        console.warn('Notification scheduling failed:', e);
+      }
     }
 
     await get().loadSubscriptions();
@@ -592,15 +600,19 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
     const updatedSubscription = await db.updateSubscription(id, updates);
 
     if (updatedSubscription) {
-      if (updatedSubscription.reminder_enabled) {
-        await notificationService.scheduleSubscriptionReminder(
-          updatedSubscription.id,
-          updatedSubscription.name,
-          updatedSubscription.next_payment_date,
-          updatedSubscription.reminder_days_before || 1
-        );
-      } else {
-        await notificationService.cancelSubscriptionReminder(updatedSubscription.id);
+      try {
+        if (updatedSubscription.reminder_enabled) {
+          await notificationService.scheduleSubscriptionReminder(
+            updatedSubscription.id,
+            updatedSubscription.name,
+            updatedSubscription.next_payment_date,
+            updatedSubscription.reminder_days_before || 1
+          );
+        } else {
+          await notificationService.cancelSubscriptionReminder(updatedSubscription.id);
+        }
+      } catch (e) {
+        console.warn('Notification update failed:', e);
       }
     }
 
@@ -609,7 +621,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
 
   deleteSubscription: async (id) => {
     await db.deleteSubscription(id);
-    await notificationService.cancelSubscriptionReminder(id);
+    try { await notificationService.cancelSubscriptionReminder(id); } catch (e) { /* ignore */ }
     await get().loadSubscriptions();
   },
 

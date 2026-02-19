@@ -1,19 +1,32 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/store';
 import { authService } from '../../src/services/authService';
-import { Colors, Gradients } from '../../src/constants/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { Spacing, Shadows, BorderRadius } from '../../src/constants/theme';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import * as WebBrowser from 'expo-web-browser';
+import * as Haptics from 'expo-haptics';
+import * as Linking from 'expo-linking';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function Register() {
   const router = useRouter();
-  const { register } = useStore();
+  const { register, init } = useStore();
+  const { colors, fontFamily, scaleFont } = useTheme();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleRegister = async () => {
     if (!name || !email || !password) return Alert.alert('Błąd', 'Wypełnij wszystkie pola');
@@ -32,16 +45,11 @@ export default function Register() {
     } catch (e: any) {
       const message = String(e?.message || '');
       const lower = message.toLowerCase();
-
       if (lower.includes('rate limit') || lower.includes('limit emaili')) {
-        Alert.alert(
-          'Limit wiadomości email',
-          'Za dużo prób rejestracji w krótkim czasie. Odczekaj kilka minut i spróbuj ponownie.',
-          [
-            { text: 'OK', style: 'cancel' },
-            { text: 'Logowanie', onPress: () => router.replace('/(auth)/login') },
-          ]
-        );
+        Alert.alert('Limit wiadomości', 'Odczekaj kilka minut i spróbuj ponownie.', [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Logowanie', onPress: () => router.replace('/(auth)/login') },
+        ]);
       } else {
         Alert.alert('Błąd', message || 'Coś poszło nie tak');
       }
@@ -50,63 +58,188 @@ export default function Register() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const redirectTo = Linking.createURL('auth/callback');
+      const { data, error } = await authService.signInWithGoogle(redirectTo);
+      if (error) throw new Error(error.message);
+      if (!data?.url) throw new Error('Nie udało się rozpocząć logowania Google');
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type === 'success') {
+        const { error: completionError } = await authService.completeOAuthSignIn(result.url);
+        if (completionError) throw completionError;
+        await init();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/(tabs)');
+      } else if (result.type !== 'cancel') {
+        throw new Error('Logowanie Google zostało przerwane');
+      }
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Błąd', e.message || 'Nie udało się zalogować przez Google');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
+    <View style={[s.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {/* Back */}
+            <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
+              <Ionicons name="arrow-back" size={22} color={colors.text} />
+            </TouchableOpacity>
 
-        <View style={styles.header}>
-          <Text style={styles.title}>Stwórz konto 🚀</Text>
-          <Text style={styles.subtitle}>Dołącz do Cenny Grosz</Text>
-        </View>
+            {/* Header */}
+            <Animated.View entering={FadeInDown.delay(100).duration(500)}>
+              <Text style={[s.title, { color: colors.text, fontFamily }]}>Stwórz konto 🚀</Text>
+              <Text style={[s.subtitle, { color: colors.textLight, fontFamily }]}>Dołącz do Cenny Grosz</Text>
+            </Animated.View>
 
-        <View style={styles.form}>
-          <View style={styles.inputBox}>
-            <Ionicons name="person-outline" size={20} color={Colors.textMuted} />
-            <TextInput style={styles.input} placeholder="Imię" value={name} onChangeText={setName} placeholderTextColor={Colors.textMuted} />
-          </View>
-          <View style={styles.inputBox}>
-            <Ionicons name="mail-outline" size={20} color={Colors.textMuted} />
-            <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.textMuted} />
-          </View>
-          <View style={styles.inputBox}>
-            <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} />
-            <TextInput style={styles.input} placeholder="Hasło" value={password} onChangeText={setPassword} secureTextEntry placeholderTextColor={Colors.textMuted} />
-          </View>
+            {/* Form */}
+            <Animated.View entering={FadeInDown.delay(250).duration(500)} style={[s.card, { backgroundColor: colors.card }]}>
+              {/* Name */}
+              <View style={s.field}>
+                <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Imię</Text>
+                <View style={[s.inputRow, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+                  <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={[s.input, { color: colors.text, fontFamily }]}
+                    placeholder="Twoje imię"
+                    placeholderTextColor={colors.textMuted}
+                    value={name}
+                    onChangeText={setName}
+                    autoCapitalize="words"
+                  />
+                </View>
+              </View>
 
-          <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
-            <LinearGradient colors={Gradients.primary} style={styles.btnGradient}>
-              {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.btnText}>Zarejestruj się</Text>}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+              {/* Email */}
+              <View style={s.field}>
+                <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Email</Text>
+                <View style={[s.inputRow, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+                  <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={[s.input, { color: colors.text, fontFamily }]}
+                    placeholder="twój@email.com"
+                    placeholderTextColor={colors.textMuted}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Masz konto? </Text>
-          <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
-            <Text style={styles.footerLink}>Zaloguj się</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              {/* Password */}
+              <View style={s.field}>
+                <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Hasło</Text>
+                <View style={[s.inputRow, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={[s.input, { color: colors.text, fontFamily }]}
+                    placeholder="Minimum 6 znaków"
+                    placeholderTextColor={colors.textMuted}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Submit */}
+              <TouchableOpacity
+                style={[s.submitBtn, { backgroundColor: colors.primary }]}
+                onPress={handleRegister}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <View style={s.submitRow}>
+                    <Text style={[s.submitText, { fontFamily }]}>Zarejestruj się</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Divider */}
+              <View style={s.divider}>
+                <View style={[s.divLine, { backgroundColor: colors.borderLight }]} />
+                <Text style={[s.divText, { color: colors.textMuted, fontFamily }]}>lub</Text>
+                <View style={[s.divLine, { backgroundColor: colors.borderLight }]} />
+              </View>
+
+              {/* Google */}
+              <TouchableOpacity
+                style={[s.socialBtn, { backgroundColor: colors.background, borderColor: colors.borderLight }]}
+                onPress={handleGoogleSignIn}
+                disabled={googleLoading}
+                activeOpacity={0.8}
+              >
+                <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png' }} style={s.socialIcon} />
+                <Text style={[s.socialText, { color: colors.text, fontFamily }]}>Kontynuuj z Google</Text>
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* Footer */}
+            <View style={s.footer}>
+              <Text style={[s.footerText, { color: colors.textLight, fontFamily }]}>Masz konto? </Text>
+              <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
+                <Text style={[s.footerLink, { color: colors.primary, fontFamily }]}>Zaloguj się</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 24, paddingTop: 60 },
-  back: { width: 40, height: 40, justifyContent: 'center' },
-  header: { marginTop: 20, marginBottom: 32 },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.text },
-  subtitle: { fontSize: 16, color: Colors.textLight, marginTop: 4 },
-  form: { gap: 16 },
-  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 12, paddingHorizontal: 16, height: 56, gap: 12, borderWidth: 1, borderColor: Colors.border },
-  input: { flex: 1, fontSize: 16, color: Colors.text },
-  btn: { borderRadius: 12, overflow: 'hidden', marginTop: 8 },
-  btnGradient: { height: 56, justifyContent: 'center', alignItems: 'center' },
-  btnText: { fontSize: 16, fontWeight: '700', color: Colors.white },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32, paddingBottom: 32 },
-  footerText: { color: Colors.textLight },
-  footerLink: { color: Colors.primary, fontWeight: '600' },
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  scroll: { flexGrow: 1, paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', marginTop: Spacing.sm },
+
+  title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.6, marginTop: 8 },
+  subtitle: { fontSize: 15, fontWeight: '500', marginTop: 4, marginBottom: 28 },
+
+  card: { borderRadius: 24, padding: Spacing.xl, ...Shadows.small },
+
+  field: { marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginLeft: 2 },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center', height: 52,
+    borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, gap: 10,
+  },
+  input: { flex: 1, fontSize: 15, height: '100%' },
+
+  submitBtn: {
+    height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginTop: 4,
+  },
+  submitRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  submitText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
+  divLine: { flex: 1, height: StyleSheet.hairlineWidth * 2 },
+  divText: { fontSize: 13, fontWeight: '500', marginHorizontal: 12 },
+
+  socialBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 52, borderRadius: 14, borderWidth: 1, gap: 10,
+  },
+  socialIcon: { width: 20, height: 20 },
+  socialText: { fontSize: 15, fontWeight: '600' },
+
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 28, paddingBottom: 20 },
+  footerText: { fontSize: 14 },
+  footerLink: { fontSize: 14, fontWeight: '700' },
 });

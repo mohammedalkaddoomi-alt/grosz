@@ -6,12 +6,34 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/store';
-import { Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
+import { Gradients, Shadows, BorderRadius, Spacing, Colors as ThemeColors } from '../../src/constants/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { ocrService } from '../../src/services/ocrService';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
 
-// Common emojis for quick selection
-const EMOJI_OPTIONS = ['🍔', '🚗', '🛒', '🎬', '📄', '💊', '💰', '💻', '🎁', '📈', '🏠', '✈️', '🎮', '📱', '👕', '💪', '🎓', '🐕', '☕', '🍕', '🎵', '⚽', '🎨', '💇', '🔧'];
+// Extensive emoji options for custom categories
+const EMOJI_OPTIONS = [
+  // Food & Drink
+  '🍔', '🍕', '🍣', '🍜', '🍰', '☕', '🍺', '🍷', '🥗', '🍽️',
+  // Transport
+  '🚗', '🚕', '🚌', '🚂', '✈️', '⛽', '🛵', '🚲', '🛳️', '🚀',
+  // Shopping & Fashion
+  '🛒', '🛍️', '👕', '👗', '👟', '💄', '👜', '💍', '🎩', '👔',
+  // Home & Living
+  '🏠', '🔑', '🛋️', '🧹', '💡', '🔧', '🪴', '🛏️', '🚿', '🍳',
+  // Health & Body
+  '💊', '🏥', '💪', '🧘', '🦷', '👀', '💇', '🩺', '❤️', '🧴',
+  // Entertainment
+  '🎬', '🎮', '🎵', '📚', '🎨', '⚽', '🎯', '🎪', '🎭', '📺',
+  // Money & Work
+  '💰', '💳', '💼', '📈', '🏦', '💎', '🏆', '📊', '🏷️', '💵',
+  // Nature & Animals
+  '🐕', '🐈', '🌳', '🌺', '🌞', '🌊', '⛰️', '🦋', '🐠', '🐾',
+  // Tech & Education
+  '💻', '📱', '🎓', '📝', '🔬', '🌐', '📡', '🤖', '🖨️', '📸',
+  // Misc
+  '🎁', '👶', '🎉', '🔔', '📌', '🛡️', '🏛️', '🌙', '🔄', '⭐',
+];
 
 export default function AddTransaction() {
   const router = useRouter();
@@ -33,6 +55,12 @@ export default function AddTransaction() {
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('📌');
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+
+  // Auto-copy to shared wallet
+  const [alsoToShared, setAlsoToShared] = useState(false);
+  const [sharedWalletTarget, setSharedWalletTarget] = useState<any>(null);
+  const sharedWallets = wallets.filter((w: any) => w.is_shared);
+  const showSharedToggle = activeWallet && !activeWallet.is_shared && sharedWallets.length > 0;
 
   useEffect(() => {
     loadCategories(type);
@@ -100,7 +128,23 @@ export default function AddTransaction() {
         type,
         note: note || undefined,
       });
-      Alert.alert('Sukces! ✨', 'Transakcja dodana', [{ text: 'OK', onPress: () => router.back() }]);
+
+      // Auto-copy to shared wallet if enabled
+      if (alsoToShared && sharedWalletTarget) {
+        try {
+          await addTransaction({
+            wallet_id: sharedWalletTarget.id,
+            category_id: selectedCategory.id,
+            amount: parseFloat(amount),
+            type,
+            note: note ? `${note} (z ${activeWallet.name})` : `Z ${activeWallet.name}`,
+          });
+        } catch (e: any) {
+          console.warn('Failed to auto-copy to shared wallet:', e.message);
+        }
+      }
+
+      Alert.alert('Sukces! ✨', alsoToShared ? 'Transakcja dodana do obu portfeli' : 'Transakcja dodana', [{ text: 'OK', onPress: () => router.back() }]);
     } catch (e: any) {
       Alert.alert('Błąd', e.message);
     } finally {
@@ -134,13 +178,7 @@ export default function AddTransaction() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]} edges={['top']}>
       {/* Wallpaper Background */}
-      {settings.wallpaper && (
-        <Image
-          source={{ uri: settings.wallpaper.uri }}
-          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-          blurRadius={settings.wallpaper.blur}
-        />
-      )}
+      {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
@@ -267,6 +305,56 @@ export default function AddTransaction() {
             placeholderTextColor={Colors.textMuted}
           />
 
+          {/* Auto-Copy to Shared Wallet Toggle */}
+          {showSharedToggle && (
+            <View style={styles.sharedCopySection}>
+              <TouchableOpacity
+                style={styles.sharedCopyToggle}
+                onPress={() => {
+                  const newVal = !alsoToShared;
+                  setAlsoToShared(newVal);
+                  if (newVal && !sharedWalletTarget && sharedWallets.length > 0) {
+                    setSharedWalletTarget(sharedWallets[0]);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.toggleTrack, alsoToShared && styles.toggleTrackActive]}>
+                  <View style={[styles.toggleThumb, alsoToShared && styles.toggleThumbActive]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sharedCopyLabel}>Dodaj też do wspólnego portfela</Text>
+                  <Text style={styles.sharedCopyHint}>Automatycznie skopiuj do portfela wspólnego</Text>
+                </View>
+                <Ionicons name="people" size={20} color={alsoToShared ? ThemeColors.shared : Colors.textMuted} />
+              </TouchableOpacity>
+
+              {alsoToShared && sharedWallets.length > 1 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sharedWalletPicker}>
+                  {sharedWallets.map((sw: any) => (
+                    <TouchableOpacity
+                      key={sw.id}
+                      style={[styles.sharedWalletChip, sharedWalletTarget?.id === sw.id && styles.sharedWalletChipActive]}
+                      onPress={() => setSharedWalletTarget(sw)}
+                    >
+                      <Text style={styles.sharedWalletChipEmoji}>{sw.emoji}</Text>
+                      <Text style={[styles.sharedWalletChipText, sharedWalletTarget?.id === sw.id && styles.sharedWalletChipTextActive]}>{sw.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              {alsoToShared && sharedWalletTarget && (
+                <View style={styles.sharedCopyPreview}>
+                  <Ionicons name="arrow-forward-circle" size={16} color={ThemeColors.shared} />
+                  <Text style={styles.sharedCopyPreviewText}>
+                    → {sharedWalletTarget.emoji} {sharedWalletTarget.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Submit */}
           <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={loading} activeOpacity={0.8}>
             <LinearGradient colors={type === 'income' ? Gradients.income : Gradients.expense} style={styles.submitGradient}>
@@ -353,16 +441,18 @@ export default function AddTransaction() {
             />
 
             <Text style={styles.modalLabel}>Wybierz emoji</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiScroll}>
-              {EMOJI_OPTIONS.map((emoji) => (
-                <TouchableOpacity
-                  key={emoji}
-                  style={[styles.emojiBtn, newCategoryEmoji === emoji && styles.emojiBtnSelected]}
-                  onPress={() => setNewCategoryEmoji(emoji)}
-                >
-                  <Text style={styles.emojiBtnText}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
+            <ScrollView style={styles.emojiGrid} nestedScrollEnabled>
+              <View style={styles.emojiGridInner}>
+                {EMOJI_OPTIONS.map((emoji) => (
+                  <TouchableOpacity
+                    key={emoji}
+                    style={[styles.emojiBtn, newCategoryEmoji === emoji && styles.emojiBtnSelected]}
+                    onPress={() => setNewCategoryEmoji(emoji)}
+                  >
+                    <Text style={styles.emojiBtnText}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </ScrollView>
 
             <View style={styles.previewBox}>
@@ -540,8 +630,9 @@ const getStyles = (Colors: any) => StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   typeIndicatorText: { fontSize: 13, fontWeight: '600' },
-  emojiScroll: { marginBottom: Spacing.md },
-  emojiBtn: { width: 48, height: 48, borderRadius: BorderRadius.md, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.sm },
+  emojiGrid: { maxHeight: 200, marginBottom: Spacing.md },
+  emojiGridInner: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  emojiBtn: { width: 42, height: 42, borderRadius: BorderRadius.md, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' },
   emojiBtnSelected: { backgroundColor: Colors.primary + '20', borderWidth: 2, borderColor: Colors.primary },
   emojiBtnText: { fontSize: 24 },
   previewBox: { backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.xl },
@@ -588,4 +679,97 @@ const getStyles = (Colors: any) => StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   sharedTagText: { fontSize: 11, color: Colors.shared, fontWeight: '600' },
+
+  // Auto-copy to shared wallet
+  sharedCopySection: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    padding: Spacing.lg,
+    ...Shadows.medium,
+  },
+  sharedCopyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  toggleTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.textMuted + '30',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleTrackActive: {
+    backgroundColor: ThemeColors.shared,
+  },
+  toggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end' as const,
+  },
+  sharedCopyLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+    letterSpacing: -0.2,
+  },
+  sharedCopyHint: {
+    fontSize: 11,
+    color: Colors.textLight,
+    marginTop: 2,
+  },
+  sharedWalletPicker: {
+    marginTop: Spacing.md,
+  },
+  sharedWalletChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.sm,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  sharedWalletChipActive: {
+    borderColor: ThemeColors.shared,
+    backgroundColor: ThemeColors.shared + '15',
+  },
+  sharedWalletChipEmoji: { fontSize: 16 },
+  sharedWalletChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textLight,
+  },
+  sharedWalletChipTextActive: {
+    color: ThemeColors.shared,
+  },
+  sharedCopyPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+    backgroundColor: ThemeColors.shared + '10',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  sharedCopyPreviewText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ThemeColors.shared,
+  },
 });

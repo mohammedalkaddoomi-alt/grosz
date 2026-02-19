@@ -10,6 +10,7 @@ import { reportService } from '../../src/services/reportService';
 import { Transaction, Wallet } from '../../src/types';
 import { AnimatedButton, AnimatedCard } from '../../src/components/AnimatedComponents';
 import { haptics } from '../../src/utils/haptics';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
 
 export default function Transactions() {
   const router = useRouter();
@@ -176,13 +177,7 @@ export default function Transactions() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]} edges={['top']}>
       {/* Wallpaper Background */}
-      {settings.wallpaper && (
-        <Image
-          source={{ uri: settings.wallpaper.uri }}
-          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-          blurRadius={settings.wallpaper.blur}
-        />
-      )}
+      {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
@@ -255,16 +250,16 @@ export default function Transactions() {
         {wallets
           .filter((wallet: Wallet) => wallet.id !== activeWallet?.id)
           .map((wallet: Wallet) => (
-          <AnimatedButton
-            key={wallet.id}
-            style={[styles.walletFilterChip, walletFilter === wallet.id && styles.walletFilterChipActive]}
-            onPress={() => { setWalletFilter(wallet.id); haptics.selection(); }}
-            hapticFeedback="light"
-          >
-            <Text style={[styles.walletFilterText, walletFilter === wallet.id && styles.walletFilterTextActive]}>
-              {wallet.emoji} {wallet.name}
-            </Text>
-          </AnimatedButton>
+            <AnimatedButton
+              key={wallet.id}
+              style={[styles.walletFilterChip, walletFilter === wallet.id && styles.walletFilterChipActive]}
+              onPress={() => { setWalletFilter(wallet.id); haptics.selection(); }}
+              hapticFeedback="light"
+            >
+              <Text style={[styles.walletFilterText, walletFilter === wallet.id && styles.walletFilterTextActive]}>
+                {wallet.emoji} {wallet.name}
+              </Text>
+            </AnimatedButton>
           ))}
       </ScrollView>
 

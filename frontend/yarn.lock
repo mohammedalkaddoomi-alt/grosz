@@ -3658,7 +3658,7 @@ expo-application@~7.0.8:
   resolved "https://registry.npmjs.org/expo-application/-/expo-application-7.0.8.tgz"
   integrity sha512-qFGyxk7VJbrNOQWBbE09XUuGuvkOgFS9QfToaK2FdagM2aQ+x3CvGV2DuVgl/l4ZxPgIf3b/MNh9xHpwSwn74Q==
 
-expo-asset@~12.0.12:
+expo-asset@^12.0.12, expo-asset@~12.0.12:
   version "12.0.12"
   resolved "https://registry.npmjs.org/expo-asset/-/expo-asset-12.0.12.tgz"
   integrity sha512-CsXFCQbx2fElSMn0lyTdRIyKlSXOal6ilLJd+yeZ6xaC7I9AICQgscY5nj0QcwgA+KYYCCEQEBndMsmj7drOWQ==
@@ -6039,10 +6039,10 @@ react-native-screens@*, "react-native-screens@>= 4.0.0", react-native-screens@~4
     react-native-is-edge-to-edge "^1.2.1"
     warn-once "^0.1.0"
 
-react-native-svg@*:
-  version "15.15.2"
-  resolved "https://registry.npmjs.org/react-native-svg/-/react-native-svg-15.15.2.tgz"
-  integrity sha512-lpaSwA2i+eLvcEdDZyGgMEInQW99K06zjJqfMFblE0yxI0SCN5E4x6in46f0IYi6i3w2t2aaq3oOnyYBe+bo4w==
+react-native-svg@*, react-native-svg@^15.15.3:
+  version "15.15.3"
+  resolved "https://registry.npmjs.org/react-native-svg/-/react-native-svg-15.15.3.tgz"
+  integrity sha512-/k4KYwPBLGcx2f5d4FjE+vCScK7QOX14cl2lIASJ28u4slHHtIhL0SZKU7u9qmRBHxTCKPoPBtN6haT1NENJNA==
   dependencies:
     css-select "^5.1.0"
     css-tree "^1.1.3"

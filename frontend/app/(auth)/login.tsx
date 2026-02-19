@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, Image, ActivityIndicator } from 'react-native';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity, Alert,
+  KeyboardAvoidingView, Platform, ScrollView, Image, ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../src/store/store';
 import { authService } from '../../src/services/authService';
-import { Colors, Gradients, Shadows, BorderRadius, Spacing, Typography } from '../../src/constants/theme';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { AnimatedCard, AnimatedButton } from '../../src/components/AnimatedComponents';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { Spacing, BorderRadius, Shadows } from '../../src/constants/theme';
+import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 
-// Configure WebBrowser for OAuth
 WebBrowser.maybeCompleteAuthSession();
 const RESEND_COOLDOWN_SECONDS = 60;
 const DEMO_LOGIN_EMAIL = 'demo@cennygrosz.app';
@@ -23,6 +24,7 @@ export default function Login() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { login, register, init } = useStore();
+  const { colors, fontFamily, scaleFont } = useTheme();
   const [isLogin, setIsLogin] = useState(params.initialIsLogin !== 'false');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,7 +42,6 @@ export default function Login() {
   const toggleMode = () => {
     Haptics.selectionAsync();
     setIsLogin(!isLogin);
-    // Reset form errors when switching modes
     setUsernameError('');
     setUsernameAvailable(null);
   };
@@ -58,38 +59,29 @@ export default function Login() {
       if (username.length > 0 && username.length < 3) setUsernameError('Minimum 3 znaki');
       return;
     }
-
     setCheckingUsername(true);
     const timeout = setTimeout(async () => {
       try {
         const isAvailable = await authService.checkUsernameAvailability(username);
         setUsernameAvailable(isAvailable);
-        if (!isAvailable) {
-          setUsernameError('Nazwa użytkownika zajęta');
-        }
+        if (!isAvailable) setUsernameError('Nazwa użytkownika zajęta');
       } catch (err) {
         console.error('Check failed', err);
       } finally {
         setCheckingUsername(false);
       }
     }, 600);
-
     return () => clearTimeout(timeout);
   }, [username, isLogin]);
 
   React.useEffect(() => {
     if (resendCooldown <= 0) return;
-
     const timer = setInterval(() => {
       setResendCooldown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timer); return 0; }
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
@@ -98,23 +90,12 @@ export default function Login() {
     try {
       const redirectTo = Linking.createURL('auth/callback');
       const { data, error } = await authService.signInWithGoogle(redirectTo);
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (!data?.url) {
-        throw new Error('Nie udało się rozpocząć logowania Google');
-      }
-
-      // Open the OAuth URL
+      if (error) throw new Error(error.message);
+      if (!data?.url) throw new Error('Nie udało się rozpocząć logowania Google');
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-
       if (result.type === 'success') {
         const { error: completionError } = await authService.completeOAuthSignIn(result.url);
-        if (completionError) {
-          throw completionError;
-        }
+        if (completionError) throw completionError;
         await init();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/(tabs)');
@@ -135,44 +116,29 @@ export default function Login() {
       Alert.alert('Podaj email', 'Wpisz poprawny email, aby wysłać link ponownie.');
       return;
     }
-
-    if (resendLoading || resendCooldown > 0) {
-      return;
-    }
-
+    if (resendLoading || resendCooldown > 0) return;
     setResendLoading(true);
     const { error } = await authService.resendSignupConfirmation(trimmedEmail);
     setResendLoading(false);
-
     if (error) {
       const lower = String(error.message || '').toLowerCase();
-      if (lower.includes('rate limit') || lower.includes('limit')) {
-        setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      }
+      if (lower.includes('rate limit') || lower.includes('limit')) setResendCooldown(RESEND_COOLDOWN_SECONDS);
       Alert.alert('Błąd', error.message || 'Nie udało się wysłać linku');
       return;
     }
-
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
     Alert.alert('Wysłano', 'Link weryfikacyjny został wysłany ponownie.');
   };
 
   const handleSubmit = async () => {
-    if (!email.trim() || !password.trim()) {
-      return Alert.alert('Błąd', 'Wypełnij wszystkie pola');
-    }
-    if (!isLogin && !name.trim()) {
-      return Alert.alert('Błąd', 'Podaj swoje imię');
-    }
+    if (!email.trim() || !password.trim()) return Alert.alert('Błąd', 'Wypełnij wszystkie pola');
+    if (!isLogin && !name.trim()) return Alert.alert('Błąd', 'Podaj swoje imię');
     if (!isLogin) {
       if (!username.trim()) return Alert.alert('Błąd', 'Podaj nazwę użytkownika');
       if (username.length < 3) return Alert.alert('Błąd', 'Nazwa użytkownika za krótka');
       if (usernameAvailable === false) return Alert.alert('Błąd', 'Nazwa użytkownika zajęta');
     }
-
-    if (password.length < 6) {
-      return Alert.alert('Błąd', 'Hasło musi mieć minimum 6 znaków');
-    }
+    if (password.length < 6) return Alert.alert('Błąd', 'Hasło musi mieć minimum 6 znaków');
 
     setLoading(true);
     try {
@@ -196,61 +162,28 @@ export default function Login() {
       const lower = message.toLowerCase();
 
       if (lower.includes('email not confirmed') || lower.includes('not confirmed')) {
-        Alert.alert(
-          'Potwierdź email',
-          'Najpierw potwierdź konto z linku w wiadomości email. Możesz też wysłać link ponownie.',
-          [
-            { text: 'Anuluj', style: 'cancel' },
-            {
-              text: 'Wyślij ponownie',
-              onPress: () => {
-                void handleResendVerificationEmail();
-              }
-            }
-          ]
-        );
+        Alert.alert('Potwierdź email', 'Najpierw potwierdź konto z linku w wiadomości email.', [
+          { text: 'Anuluj', style: 'cancel' },
+          { text: 'Wyślij ponownie', onPress: () => void handleResendVerificationEmail() },
+        ]);
         return;
       }
-
       if (lower.includes('rate limit') || lower.includes('limit emaili')) {
-        Alert.alert(
-          'Limit wiadomości email',
-          'Za dużo prób rejestracji w krótkim czasie. Odczekaj kilka minut, potem spróbuj ponownie lub zaloguj się jeśli konto już istnieje.',
-          [
-            { text: 'OK', style: 'cancel' },
-            {
-              text: 'Przejdź do logowania',
-              onPress: () => setIsLogin(true),
-            }
-          ]
+        Alert.alert('Limit wiadomości', 'Odczekaj kilka minut i spróbuj ponownie.', [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Logowanie', onPress: () => setIsLogin(true) },
+        ]);
+        return;
+      }
+      if (lower.includes('invalid login credentials')) {
+        const canResend = email.trim().includes('@');
+        Alert.alert('Nieprawidłowe dane', 'Sprawdź email i hasło.',
+          canResend
+            ? [{ text: 'OK', style: 'cancel' }, { text: 'Wyślij link', onPress: () => void handleResendVerificationEmail() }]
+            : [{ text: 'OK' }]
         );
         return;
       }
-
-      if (lower.includes('invalid login credentials') || lower.includes('nieprawidłowe dane logowania')) {
-        const trimmedEmail = email.trim();
-        const canResend = trimmedEmail.includes('@');
-
-        Alert.alert(
-          'Nieprawidłowe dane logowania',
-          canResend
-            ? 'Sprawdź email i hasło. Jeśli konto jest nowe, potwierdź email lub wyślij link ponownie.'
-            : 'Sprawdź nazwę użytkownika i hasło.',
-          canResend
-            ? [
-              { text: 'OK', style: 'cancel' },
-              {
-                text: 'Wyślij link ponownie',
-                onPress: () => {
-                  void handleResendVerificationEmail();
-                }
-              }
-            ]
-            : [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
       Alert.alert('Błąd', message || 'Coś poszło nie tak');
     } finally {
       setLoading(false);
@@ -272,198 +205,199 @@ export default function Login() {
     }
   };
 
+  const inputBorder = (hasError?: boolean, isValid?: boolean) => ({
+    borderColor: hasError ? '#EF4444' : isValid ? '#10B981' : colors.borderLight,
+  });
+
   return (
-    <View style={styles.container}>
-      {/* Background with Gradient */}
-      <LinearGradient colors={Gradients.primary} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <View style={styles.overlay} />
-
-      <SafeAreaView style={styles.safeArea}>
+    <View style={[s.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-            {/* Logo & Header */}
-            <Animated.View entering={FadeIn.delay(100).duration(800)}>
-              <View style={styles.header}>
-                <View style={styles.logoContainer}>
-                  <Text style={styles.logoEmoji}>💰</Text>
-                </View>
-                <Text style={styles.appName}>Cenny Grosz</Text>
-                <Text style={styles.tagline}>Finanse pod kontrolą</Text>
+          <ScrollView
+            contentContainerStyle={s.scroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Branding */}
+            <Animated.View entering={FadeIn.delay(100).duration(700)} style={s.branding}>
+              <View style={[s.logoCircle, { backgroundColor: `${colors.primary}14` }]}>
+                <Text style={s.logoEmoji}>💰</Text>
               </View>
+              <Text style={[s.appName, { color: colors.text, fontFamily }]}>Cenny Grosz</Text>
+              <Text style={[s.tagline, { color: colors.textLight, fontFamily }]}>Finanse pod kontrolą</Text>
             </Animated.View>
 
-            {/* Auth Card */}
-            <AnimatedCard entrance="slideUp" delay={300} style={styles.authCard}>
-              {/* Toggle Switch */}
-              <View style={styles.toggleContainer}>
+            {/* Card */}
+            <Animated.View entering={FadeInUp.delay(250).duration(600)} style={[s.card, { backgroundColor: colors.card }]}>
+              {/* Toggle */}
+              <View style={[s.toggle, { backgroundColor: colors.background }]}>
                 <TouchableOpacity
-                  style={[styles.toggleBtn, isLogin && styles.toggleBtnActive]}
+                  style={[s.toggleBtn, isLogin && [s.toggleActive, { backgroundColor: colors.card }]]}
                   onPress={() => !isLogin && toggleMode()}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Logowanie</Text>
+                  <Text style={[s.toggleText, { color: colors.textMuted, fontFamily }, isLogin && { color: colors.text, fontWeight: '700' }]}>
+                    Logowanie
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.toggleBtn, !isLogin && styles.toggleBtnActive]}
+                  style={[s.toggleBtn, !isLogin && [s.toggleActive, { backgroundColor: colors.card }]]}
                   onPress={() => isLogin && toggleMode()}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Rejestracja</Text>
+                  <Text style={[s.toggleText, { color: colors.textMuted, fontFamily }, !isLogin && { color: colors.text, fontWeight: '700' }]}>
+                    Rejestracja
+                  </Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Form Fields */}
-              <View style={styles.formContainer}>
-                {!isLogin && (
-                  <>
-                    <View style={styles.inputWrapper}>
-                      <Text style={styles.inputLabel}>Imię</Text>
-                      <View style={styles.inputContainer}>
-                        <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          value={name}
-                          onChangeText={setName}
-                          placeholder="Twoje imię"
-                          placeholderTextColor={Colors.textMuted}
-                          autoCapitalize="words"
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.inputWrapper}>
-                      <Text style={styles.inputLabel}>Nazwa użytkownika</Text>
-                      <View style={[styles.inputContainer, usernameError ? { borderColor: Colors.error } : usernameAvailable ? { borderColor: Colors.success } : null]}>
-                        <Ionicons name="at-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          value={username}
-                          onChangeText={handleUsernameChange}
-                          placeholder="nazwa_uzytkownika"
-                          placeholderTextColor={Colors.textMuted}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                        {checkingUsername ? (
-                          <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 10 }} />
-                        ) : usernameAvailable ? (
-                          <Ionicons name="checkmark-circle" size={20} color={Colors.success} style={{ marginRight: 10 }} />
-                        ) : usernameError ? (
-                          <Ionicons name="alert-circle" size={20} color={Colors.error} style={{ marginRight: 10 }} />
-                        ) : null}
-                      </View>
-                      {usernameError ? <Text style={{ color: Colors.error, fontSize: 12, marginTop: 4, marginLeft: 4 }}>{usernameError}</Text> : null}
-                    </View>
-                  </>
-                )}
-
-                <View style={styles.inputWrapper}>
-                  <Text style={styles.inputLabel}>Email</Text>
-                  <View style={styles.inputContainer}>
-                    <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+              {/* Register-only fields */}
+              {!isLogin && (
+                <>
+                  <View style={s.field}>
+                    <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Imię</Text>
+                    <View style={[s.inputRow, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+                      <Ionicons name="person-outline" size={18} color={colors.textMuted} />
                       <TextInput
-                        style={styles.input}
-                        value={email}
-                        onChangeText={setEmail}
-                        placeholder="email lub nazwa_uzytkownika"
-                        placeholderTextColor={Colors.textMuted}
-                        keyboardType="default"
+                        style={[s.input, { color: colors.text, fontFamily }]}
+                        value={name}
+                        onChangeText={setName}
+                        placeholder="Twoje imię"
+                        placeholderTextColor={colors.textMuted}
+                        autoCapitalize="words"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={s.field}>
+                    <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Nazwa użytkownika</Text>
+                    <View style={[s.inputRow, { backgroundColor: colors.background }, inputBorder(!!usernameError, !!usernameAvailable)]}>
+                      <Ionicons name="at-outline" size={18} color={colors.textMuted} />
+                      <TextInput
+                        style={[s.input, { color: colors.text, fontFamily }]}
+                        value={username}
+                        onChangeText={handleUsernameChange}
+                        placeholder="nazwa_uzytkownika"
+                        placeholderTextColor={colors.textMuted}
                         autoCapitalize="none"
                         autoCorrect={false}
                       />
+                      {checkingUsername ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : usernameAvailable ? (
+                        <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                      ) : usernameError ? (
+                        <Ionicons name="alert-circle" size={18} color="#EF4444" />
+                      ) : null}
                     </View>
-                </View>
-
-                <View style={styles.inputWrapper}>
-                  <Text style={styles.inputLabel}>Hasło</Text>
-                  <View style={styles.inputContainer}>
-                    <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="••••••••"
-                      placeholderTextColor={Colors.textMuted}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                    />
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={Colors.textMuted} />
-                    </TouchableOpacity>
+                    {usernameError ? (
+                      <Text style={[s.errorText, { fontFamily }]}>{usernameError}</Text>
+                    ) : null}
                   </View>
-                </View>
+                </>
+              )}
 
-                {isLogin && (
-                  <View style={styles.loginHelpRow}>
-                    <TouchableOpacity style={styles.forgotBtn}>
-                      <Text style={styles.forgotText}>Zapomniałeś hasła?</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.forgotBtn}
-                      onPress={handleResendVerificationEmail}
-                      disabled={resendLoading || resendCooldown > 0}
-                    >
-                      <Text style={[styles.forgotText, (resendLoading || resendCooldown > 0) && styles.forgotTextDisabled]}>
-                        {resendLoading
-                          ? 'Wysyłanie...'
-                          : resendCooldown > 0
-                            ? `Wyślij ponownie za ${resendCooldown}s`
-                            : 'Wyślij weryfikację'}
-                      </Text>
-                    </TouchableOpacity>
+              {/* Email */}
+              <View style={s.field}>
+                <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Email</Text>
+                <View style={[s.inputRow, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+                  <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={[s.input, { color: colors.text, fontFamily }]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder={isLogin ? 'email lub nazwa_uzytkownika' : 'twój@email.com'}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="default"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
+
+              {/* Password */}
+              <View style={s.field}>
+                <Text style={[s.label, { color: colors.textLight, fontFamily }]}>Hasło</Text>
+                <View style={[s.inputRow, { backgroundColor: colors.background, borderColor: colors.borderLight }]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={[s.input, { color: colors.text, fontFamily }]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Helper row */}
+              {isLogin && (
+                <View style={s.helperRow}>
+                  <TouchableOpacity>
+                    <Text style={[s.helperText, { color: colors.primary, fontFamily }]}>Zapomniałeś hasła?</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleResendVerificationEmail}
+                    disabled={resendLoading || resendCooldown > 0}
+                  >
+                    <Text style={[s.helperText, { color: colors.primary, fontFamily }, (resendLoading || resendCooldown > 0) && { opacity: 0.5 }]}>
+                      {resendLoading ? 'Wysyłanie…' : resendCooldown > 0 ? `Za ${resendCooldown}s` : 'Wyślij weryfikację'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Submit */}
+              <TouchableOpacity
+                style={[s.submitBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSubmit}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <View style={s.submitRow}>
+                    <Text style={[s.submitText, { fontFamily }]}>{isLogin ? 'Zaloguj się' : 'Stwórz konto'}</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
                   </View>
                 )}
-
-                <AnimatedButton
-                  style={styles.submitBtn}
-                  onPress={handleSubmit}
-                  disabled={loading}
-                  hapticFeedback="medium"
-                >
-                  <LinearGradient colors={Gradients.primary} style={styles.submitGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                    {loading ? (
-                      <Text style={styles.submitText}>Przetwarzanie...</Text>
-                    ) : (
-                      <>
-                        <Text style={styles.submitText}>{isLogin ? 'Zaloguj się' : 'Stwórz konto'}</Text>
-                        <Ionicons name="arrow-forward" size={20} color={Colors.white} />
-                      </>
-                    )}
-                  </LinearGradient>
-                </AnimatedButton>
-              </View>
+              </TouchableOpacity>
 
               {/* Divider */}
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>lub</Text>
-                <View style={styles.dividerLine} />
+              <View style={s.divider}>
+                <View style={[s.divLine, { backgroundColor: colors.borderLight }]} />
+                <Text style={[s.divText, { color: colors.textMuted, fontFamily }]}>lub</Text>
+                <View style={[s.divLine, { backgroundColor: colors.borderLight }]} />
               </View>
 
-              {/* Social Login */}
-              <AnimatedButton
-                style={styles.socialBtn}
+              {/* Google */}
+              <TouchableOpacity
+                style={[s.socialBtn, { backgroundColor: colors.background, borderColor: colors.borderLight }]}
                 onPress={handleGoogleSignIn}
                 disabled={googleLoading}
-                hapticFeedback="light"
+                activeOpacity={0.8}
               >
-                <View style={styles.socialIconContainer}>
-                  <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png' }} style={styles.socialIcon} />
-                </View>
-                <Text style={styles.socialBtnText}>Kontynuuj z Google</Text>
-              </AnimatedButton>
+                <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png' }} style={s.socialIcon} />
+                <Text style={[s.socialText, { color: colors.text, fontFamily }]}>Kontynuuj z Google</Text>
+              </TouchableOpacity>
 
-              <AnimatedButton
-                style={styles.demoBtn}
+              {/* Demo */}
+              <TouchableOpacity
+                style={[s.demoBtn, { borderColor: colors.border }]}
                 onPress={handleDemoLogin}
                 disabled={loading || googleLoading}
-                hapticFeedback="light"
+                activeOpacity={0.8}
               >
-                <Ionicons name="flask-outline" size={18} color={Colors.textLight} />
-                <Text style={styles.demoBtnText}>Demo Login</Text>
-              </AnimatedButton>
-            </AnimatedCard>
+                <Ionicons name="flask-outline" size={16} color={colors.textLight} />
+                <Text style={[s.demoText, { color: colors.textLight, fontFamily }]}>Demo Login</Text>
+              </TouchableOpacity>
+            </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -471,153 +405,62 @@ export default function Login() {
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: { flex: 1 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
-  safeArea: { flex: 1 },
-  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: Spacing.xl },
-  header: { alignItems: 'center', marginBottom: Spacing.xxl },
-  logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-    ...Shadows.medium,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  logoEmoji: { fontSize: 40 },
-  appName: { fontSize: 32, fontWeight: '800', color: Colors.white, textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
-  tagline: { fontSize: 16, color: 'rgba(255,255,255,0.9)', marginTop: 4, fontWeight: '500' },
+  scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.xl },
 
-  authCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 32,
-    padding: Spacing.xl,
-    ...Shadows.large,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+  branding: { alignItems: 'center', marginBottom: 32 },
+  logoCircle: {
+    width: 72, height: 72, borderRadius: 22,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 12,
   },
-  toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: Colors.background,
-    borderRadius: BorderRadius.xl,
-    padding: 4,
-    marginBottom: Spacing.xl,
-  },
-  toggleBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-  },
-  toggleBtnActive: {
-    backgroundColor: Colors.card,
+  logoEmoji: { fontSize: 36 },
+  appName: { fontSize: 30, fontWeight: '800', letterSpacing: -0.8 },
+  tagline: { fontSize: 15, fontWeight: '500', marginTop: 4 },
+
+  card: {
+    borderRadius: 24, padding: Spacing.xl,
     ...Shadows.small,
   },
-  toggleText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
-  toggleTextActive: { color: Colors.text, fontWeight: '700' },
 
-  formContainer: { gap: Spacing.lg },
-  inputWrapper: { gap: 6 },
-  inputLabel: { fontSize: 13, fontWeight: '600', color: Colors.textLight, marginLeft: 4 },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    height: 56,
-  },
-  inputIcon: { paddingLeft: Spacing.lg },
-  input: {
-    flex: 1,
-    height: '100%',
-    paddingHorizontal: Spacing.md,
-    fontSize: 16,
-    color: Colors.text,
-  },
-  eyeBtn: { padding: Spacing.md },
+  toggle: { flexDirection: 'row', borderRadius: 14, padding: 3, marginBottom: 20 },
+  toggleBtn: { flex: 1, paddingVertical: 11, borderRadius: 12, alignItems: 'center' },
+  toggleActive: { ...Shadows.small },
+  toggleText: { fontSize: 14, fontWeight: '600' },
 
-  loginHelpRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  forgotBtn: { alignSelf: 'flex-end' },
-  forgotText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
-  forgotTextDisabled: { opacity: 0.6 },
+  field: { marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginLeft: 2 },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center', height: 52,
+    borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, gap: 10,
+  },
+  input: { flex: 1, fontSize: 15, height: '100%' },
+  errorText: { color: '#EF4444', fontSize: 12, marginTop: 4, marginLeft: 2 },
+
+  helperRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, marginTop: -4 },
+  helperText: { fontSize: 13, fontWeight: '600' },
 
   submitBtn: {
-    marginTop: Spacing.sm,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...Shadows.medium,
+    height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center',
+    marginTop: 4,
   },
-  submitGradient: {
-    flexDirection: 'row',
-    height: 56,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  submitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
+  submitRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  submitText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: Spacing.xl,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.borderLight,
-  },
-  dividerText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginHorizontal: Spacing.md,
-    fontWeight: '500',
-  },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
+  divLine: { flex: 1, height: StyleSheet.hairlineWidth * 2 },
+  divText: { fontSize: 13, fontWeight: '500', marginHorizontal: 12 },
 
   socialBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-    borderRadius: BorderRadius.xl,
-    height: 56,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    gap: Spacing.md,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 52, borderRadius: 14, borderWidth: 1, gap: 10,
   },
-  socialIconContainer: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  socialIcon: { width: 22, height: 22 },
-  socialBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.text,
-  },
+  socialIcon: { width: 20, height: 20 },
+  socialText: { fontSize: 15, fontWeight: '600' },
+
   demoBtn: {
-    marginTop: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    height: 44,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.background,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 44, borderRadius: 12, borderWidth: 1, gap: 6, marginTop: 12,
   },
-  demoBtnText: {
-    color: Colors.textLight,
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  demoText: { fontSize: 13, fontWeight: '600' },
 });

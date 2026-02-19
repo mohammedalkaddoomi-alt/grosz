@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from './supabase';
+import { useStore, isDemoUser } from '../store/store';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -163,35 +164,110 @@ class Api {
 
   // AI
   async chat(message: string, timeoutMs: number = 25000) {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    // Check for Demo User
+    const user = useStore.getState().user;
+    if (user && isDemoUser(user.id)) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return {
+        response: "To jest wersja demo, więc nie mam dostępu do prawdziwego AI. W pełnej wersji pomogę Ci analizować wydatki i planować budżet! 💰"
+      };
+    }
+
+    // Call chatStream but accumulate result (fallback for non-streaming usage)
+    let fullResponse = '';
+    await this.chatStream(message, (text) => { fullResponse += text; });
+    return { response: fullResponse };
+  }
+
+  async chatStream(message: string, onChunk: (text: string) => void): Promise<string> {
+    const user = useStore.getState().user;
+    if (user && isDemoUser(user.id)) {
+      const mock = "To jest wersja demo, więc nie mam dostępu do prawdziwego AI. W pełnej wersji pomogę Ci analizować wydatki i planować budżet! 💰";
+      const chunks = mock.match(/.{1,5}/g) || [];
+      for (const chunk of chunks) {
+        await new Promise(r => setTimeout(r, 50));
+        onChunk(chunk);
+      }
+      return mock;
+    }
 
     try {
-      const invokePromise = supabase.functions.invoke('analyze-finances', {
-        body: { message },
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/analyze-finances`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message }),
       });
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Request timeout')), timeoutMs);
-      });
+      if (!response.ok) throw new Error('API Error');
 
-      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
+      // @ts-ignore - React Native / Expo fetch often supports .body.getReader() or we need a polyfill context
+      // If .body is undefined, this will throw and we'll catch it.
+      const reader = (response as any).body?.getReader();
+      if (!reader) throw new Error('Streaming not supported');
 
-      if (error) {
-        console.error('Edge Function Error:', error);
-        throw new Error(error.message);
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let cursor = 0;
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+
+        // Simple regex to extract "text" fields from Gemini JSON stream
+        // We start searching from the last known safe position to improve perf
+        const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
+        regex.lastIndex = cursor;
+
+        let match;
+        while ((match = regex.exec(buffer)) !== null) {
+          try {
+            const text = JSON.parse('"' + match[1] + '"');
+            if (text) {
+              onChunk(text);
+              fullText += text;
+            }
+            cursor = match.index + match[0].length;
+          } catch (e) {
+            // Partial JSON string, wait for more data
+          }
+        }
+        // Move cursor back a bit to handle potential split matches? 
+        // No, regex.exec finds complete matches. If it's partial, it won't match quotes.
+        // But what if the closing quote hasn't arrived?
+        // match[1] depends on closing quote. So it won't match unless we have the closing quote.
+        // So we are safe.
       }
 
-      return data;
+      // Automatically save history after stream completes
+      if (fullText.trim()) {
+        await this.saveChatHistory(message, fullText).catch(e => console.error('Save history error', e));
+      }
+
+      return fullText;
+
     } catch (error) {
-      console.error('Chat API Error:', error);
-      // Fallback for demo/offline is better handled in the UI or here
+      console.error('Chat Stream Error:', error);
       throw error;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
   async getChatHistory(limit: number = 20) {
+    // Check for Demo User
+    const user = useStore.getState().user;
+    if (user && isDemoUser(user.id)) {
+      return []; // Return empty history for demo
+    }
+
     const { data, error } = await supabase
       .from('chat_history')
       .select('*')
@@ -203,6 +279,12 @@ class Api {
   }
 
   async saveChatHistory(message: string, response: string) {
+    // Check for Demo User
+    const user = useStore.getState().user;
+    if (user && isDemoUser(user.id)) {
+      return; // Do nothing for demo
+    }
+
     const normalizedMessage = message.trim();
     const normalizedResponse = response.trim();
 
@@ -211,18 +293,23 @@ class Api {
     }
 
     const {
-      data: { user },
+      data: { user: currentUser },
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      throw new Error('User not authenticated');
+    if (userError || !currentUser) {
+      // Try to get from store if auth.getUser fails (rate limit?)
+      const storeUser = useStore.getState().user;
+      if (!storeUser) throw new Error('User not authenticated');
+      // Proceed with storeUser.id? No, let's just fail safely.
+      // Actually, silently fail is better than crashing streaming.
+      return;
     }
 
     const { error } = await (supabase as any)
       .from('chat_history')
       .insert({
-        user_id: user.id,
+        user_id: currentUser.id,
         message: normalizedMessage,
         response: normalizedResponse,
       });

@@ -68,8 +68,8 @@ export const notificationService = {
 
         await Notifications.scheduleNotificationAsync({
             content: {
-                title: 'Subscription Renewal',
-                body: `Your ${name} subscription renews in ${daysBefore} day${daysBefore > 1 ? 's' : ''}.`,
+                title: 'Przypomnienie o subskrypcji',
+                body: `${name} odnawia się za ${daysBefore} ${daysBefore === 1 ? 'dzień' : 'dni'}.`,
                 data: { subscriptionId: id },
             },
             trigger: {

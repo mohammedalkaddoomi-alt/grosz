@@ -112,7 +112,7 @@ export const WageSettingsModal: React.FC<WageSettingsModalProps> = ({
                         {/* Period Selection */}
                         <View style={styles.section}>
                             <Text style={styles.label}>Okres</Text>
-                            <View style={styles.periodGrid}>
+                            <View style={styles.periodList}>
                                 {WAGE_PERIODS.map((period) => (
                                     <AnimatedButton
                                         key={period.value}
@@ -124,23 +124,17 @@ export const WageSettingsModal: React.FC<WageSettingsModalProps> = ({
                                     >
                                         <View
                                             style={[
-                                                styles.periodCard,
-                                                wagePeriod === period.value && styles.periodCardActive,
+                                                styles.periodRow,
+                                                wagePeriod === period.value && styles.periodRowActive,
                                             ]}
                                         >
-                                            {wagePeriod === period.value && (
-                                                <LinearGradient
-                                                    colors={Gradients.primary}
-                                                    style={StyleSheet.absoluteFillObject}
-                                                    start={{ x: 0, y: 0 }}
-                                                    end={{ x: 1, y: 1 }}
+                                            <View style={[styles.periodIconWrap, wagePeriod === period.value && styles.periodIconWrapActive]}>
+                                                <Ionicons
+                                                    name={period.icon as any}
+                                                    size={20}
+                                                    color={wagePeriod === period.value ? Colors.white : Colors.primary}
                                                 />
-                                            )}
-                                            <Ionicons
-                                                name={period.icon as any}
-                                                size={24}
-                                                color={wagePeriod === period.value ? Colors.white : Colors.primary}
-                                            />
+                                            </View>
                                             <Text
                                                 style={[
                                                     styles.periodLabel,
@@ -149,6 +143,9 @@ export const WageSettingsModal: React.FC<WageSettingsModalProps> = ({
                                             >
                                                 {period.label}
                                             </Text>
+                                            {wagePeriod === period.value && (
+                                                <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+                                            )}
                                         </View>
                                     </AnimatedButton>
                                 ))}
@@ -275,34 +272,45 @@ const styles = StyleSheet.create({
         color: Colors.textLight,
         marginLeft: Spacing.sm,
     },
-    periodGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: Spacing.md,
+    periodList: {
+        gap: Spacing.sm,
     },
-    periodCard: {
-        width: '48%',
+    periodRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: Colors.card,
         borderRadius: BorderRadius.xl,
-        padding: Spacing.lg,
-        alignItems: 'center',
-        gap: Spacing.sm,
+        paddingVertical: 14,
+        paddingHorizontal: Spacing.lg,
         borderWidth: 2,
         borderColor: Colors.border,
-        overflow: 'hidden',
         ...Shadows.small,
     },
-    periodCardActive: {
+    periodRowActive: {
         borderColor: Colors.primary,
+        backgroundColor: Colors.primary + '08',
+    },
+    periodIconWrap: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: Colors.primary + '15',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: Spacing.md,
+    },
+    periodIconWrapActive: {
+        backgroundColor: Colors.primary,
     },
     periodLabel: {
-        fontSize: 14,
+        flex: 1,
+        fontSize: 16,
         fontWeight: '700',
         color: Colors.text,
         letterSpacing: -0.2,
     },
     periodLabelActive: {
-        color: Colors.white,
+        color: Colors.primary,
     },
     previewCard: {
         flexDirection: 'row',

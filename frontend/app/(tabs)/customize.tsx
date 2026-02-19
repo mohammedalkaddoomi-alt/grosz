@@ -4,11 +4,44 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { Asset } from 'expo-asset';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { themePresets } from '../../src/constants/themePresets';
 import { Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
 import { AnimatedCard, AnimatedButton } from '../../src/components/AnimatedComponents';
 import { haptics } from '../../src/utils/haptics';
+import { useDrawer } from '../../src/contexts/DrawerContext';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
+
+// Bundled wallpaper images
+const WALLPAPER_IMAGES = {
+    dark_indigo: require('../../assets/wallpapers/dark_indigo.png'),
+    soft_pastel: require('../../assets/wallpapers/soft_pastel.png'),
+    sunset_warm: require('../../assets/wallpapers/sunset_warm.png'),
+};
+
+interface PresetWallpaper {
+    id: string;
+    name: string;
+    type: 'image' | 'gradient';
+    source?: any;
+    gradient?: readonly [string, string, ...string[]];
+    category: string;
+}
+
+const PRESET_WALLPAPERS: PresetWallpaper[] = [
+    // Image-based presets
+    { id: 'dark_indigo', name: 'Indygo', type: 'image', source: WALLPAPER_IMAGES.dark_indigo, category: 'Ciemne' },
+    { id: 'soft_pastel', name: 'Pastel', type: 'image', source: WALLPAPER_IMAGES.soft_pastel, category: 'Jasne' },
+    { id: 'sunset_warm', name: 'Zachód', type: 'image', source: WALLPAPER_IMAGES.sunset_warm, category: 'Ciep\u0142e' },
+    // Gradient-based presets
+    { id: 'ocean_deep', name: 'Ocean', type: 'gradient', gradient: ['#0F172A', '#1E3A5F', '#06B6D4'] as const, category: 'Ciemne' },
+    { id: 'emerald', name: 'Szmaragd', type: 'gradient', gradient: ['#064E3B', '#059669', '#10B981'] as const, category: 'Natura' },
+    { id: 'aurora', name: 'Aurora', type: 'gradient', gradient: ['#1E1B4B', '#7C3AED', '#06B6D4'] as const, category: 'Kosmiczne' },
+    { id: 'noir', name: 'Noir', type: 'gradient', gradient: ['#000000', '#1E293B', '#334155'] as const, category: 'Ciemne' },
+    { id: 'rose_gold', name: 'Różowe z\u0142oto', type: 'gradient', gradient: ['#FDF2F8', '#FBCFE8', '#F9A8D4'] as const, category: 'Jasne' },
+    { id: 'violet_dream', name: 'Fiolet', type: 'gradient', gradient: ['#2E1065', '#7C3AED', '#A78BFA'] as const, category: 'Kosmiczne' },
+];
 
 const FONT_OPTIONS = [
     { id: 'system', name: 'System' },
@@ -45,6 +78,7 @@ const isHexColor = (value: string) => /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(value
 
 export default function Customize() {
     const { settings, colors, fontFamily, scaleFont, updateTheme, resetTheme } = useTheme();
+    const { openDrawer } = useDrawer();
     const styles = useMemo(() => getStyles(colors, fontFamily, scaleFont), [colors, fontFamily, scaleFont]);
     const [wallpaperOpacity, setWallpaperOpacity] = useState(settings.wallpaper?.opacity || 0.3);
     const [colorInputs, setColorInputs] = useState<Record<string, string>>({
@@ -177,18 +211,17 @@ export default function Customize() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
             {/* Wallpaper Background */}
-            {settings.wallpaper && (
-                <Image
-                    source={{ uri: settings.wallpaper.uri }}
-                    style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-                    blurRadius={settings.wallpaper.blur}
-                />
-            )}
+            {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
 
             {/* Header */}
             <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.text }]}>Personalizacja</Text>
-                <Text style={[styles.subtitle, { color: colors.textLight }]}>Dostosuj wygląd aplikacji</Text>
+                <TouchableOpacity onPress={openDrawer} style={styles.hamburger} activeOpacity={0.7}>
+                    <Ionicons name="menu-outline" size={26} color={colors.text} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.title, { color: colors.text }]}>Personalizacja</Text>
+                    <Text style={[styles.subtitle, { color: colors.textLight }]}>Dostosuj wygl\u0105d aplikacji</Text>
+                </View>
             </View>
 
             <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -316,7 +349,7 @@ export default function Customize() {
                     </View>
                 </AnimatedCard>
 
-                {/* Wallpaper */}
+                {/* Wallpaper — Presets + Custom */}
                 <AnimatedCard entrance="slideUp" delay={220}>
                     <View style={[styles.section, { backgroundColor: colors.card }]}>
                         <View style={styles.sectionHeader}>
@@ -324,70 +357,100 @@ export default function Customize() {
                             <Text style={[styles.sectionTitle, { color: colors.text }]}>Tapeta</Text>
                         </View>
 
-                        {settings.wallpaper ? (
-                            <View style={styles.wallpaperPreview}>
-                                <Image source={{ uri: settings.wallpaper.uri }} style={styles.wallpaperImage} />
-                                <View style={styles.wallpaperControls}>
-                                    <View style={styles.opacityControl}>
-                                        <Text style={[styles.controlLabel, { color: colors.textSecondary }]}>
-                                            Przezroczystość: {Math.round(wallpaperOpacity * 100)}%
-                                        </Text>
-                                        <View style={styles.sliderContainer}>
-                                            {[0.1, 0.2, 0.3, 0.4, 0.5].map((value) => (
-                                                <TouchableOpacity
-                                                    key={value}
-                                                    style={[
-                                                        styles.sliderDot,
-                                                        { backgroundColor: colors.borderLight },
-                                                        wallpaperOpacity === value && { backgroundColor: colors.primary },
-                                                    ]}
-                                                    onPress={() => handleOpacityChange(value)}
-                                                />
-                                            ))}
-                                        </View>
+                        {/* Active wallpaper controls */}
+                        {settings.wallpaper && (
+                            <View style={styles.activeWallpaperBar}>
+                                {settings.wallpaper.uri.startsWith('gradient:') ? (
+                                    <LinearGradient
+                                        colors={settings.wallpaper.uri.replace('gradient:', '').split(',') as unknown as readonly [string, string, ...string[]]}
+                                        style={styles.activeThumb}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                    />
+                                ) : (
+                                    <Image source={{ uri: settings.wallpaper.uri }} style={styles.activeThumb} />
+                                )}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.controlLabel, { color: colors.textSecondary, marginBottom: 4 }]}>
+                                        Przezroczystość: {Math.round(wallpaperOpacity * 100)}%
+                                    </Text>
+                                    <View style={styles.sliderContainer}>
+                                        {[0.1, 0.2, 0.3, 0.4, 0.5].map((value) => (
+                                            <TouchableOpacity
+                                                key={value}
+                                                style={[
+                                                    styles.sliderDot,
+                                                    { backgroundColor: colors.borderLight },
+                                                    wallpaperOpacity === value && { backgroundColor: colors.primary },
+                                                ]}
+                                                onPress={() => handleOpacityChange(value)}
+                                            />
+                                        ))}
                                     </View>
-                                    <TouchableOpacity
-                                        style={[styles.removeBtn, { backgroundColor: colors.expenseLight }]}
-                                        onPress={handleRemoveWallpaper}
-                                    >
-                                        <Ionicons name="trash-outline" size={20} color={colors.expense} />
-                                        <Text style={[styles.removeBtnText, { color: colors.expense }]}>Usuń</Text>
-                                    </TouchableOpacity>
                                 </View>
+                                <TouchableOpacity onPress={handleRemoveWallpaper} style={styles.removeIconBtn}>
+                                    <Ionicons name="close-circle" size={24} color={colors.expense} />
+                                </TouchableOpacity>
                             </View>
-                        ) : (
-                            <TouchableOpacity style={styles.addWallpaperBtn} onPress={handleWallpaperPick}>
-                                <LinearGradient colors={Gradients.primary} style={styles.addWallpaperGradient}>
-                                    <Ionicons name="add-circle-outline" size={32} color="#FFF" />
-                                    <Text style={styles.addWallpaperText}>Dodaj tapetę</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
                         )}
-                    </View>
-                </AnimatedCard>
 
-                {/* Preview */}
-                <AnimatedCard entrance="slideUp" delay={280}>
-                    <View style={[styles.section, { backgroundColor: colors.card }]}>
-                        <View style={styles.sectionHeader}>
-                            <Ionicons name="eye-outline" size={24} color={colors.primary} />
-                            <Text style={[styles.sectionTitle, { color: colors.text }]}>Podgląd</Text>
-                        </View>
-                        <View style={styles.previewContainer}>
-                            <LinearGradient colors={[colors.primary, colors.shared]} style={styles.previewCard}>
-                                <Text style={styles.previewAmount}>12,450 zł</Text>
-                                <Text style={styles.previewLabel}>Całkowity bilans</Text>
-                            </LinearGradient>
-                            <View style={styles.previewActions}>
-                                <View style={[styles.previewAction, { backgroundColor: colors.incomeLight }]}>
-                                    <Ionicons name="arrow-down" size={20} color={colors.income} />
-                                    <Text style={[styles.previewActionText, { color: colors.income }]}>Przychód</Text>
+                        {/* Preset wallpapers grid */}
+                        <Text style={[styles.controlLabel, { color: colors.textSecondary, marginBottom: Spacing.sm }]}>
+                            Gotowe tapety
+                        </Text>
+                        <View style={styles.presetGrid}>
+                            {PRESET_WALLPAPERS.map((wallpaper) => (
+                                <TouchableOpacity
+                                    key={wallpaper.id}
+                                    style={styles.presetCard}
+                                    onPress={async () => {
+                                        haptics.medium();
+                                        if (wallpaper.type === 'image' && wallpaper.source) {
+                                            const asset = Asset.fromModule(wallpaper.source);
+                                            await asset.downloadAsync();
+                                            await updateTheme({
+                                                wallpaper: {
+                                                    uri: asset.localUri || asset.uri,
+                                                    opacity: wallpaperOpacity,
+                                                    blur: 0,
+                                                },
+                                            });
+                                        } else if (wallpaper.type === 'gradient' && wallpaper.gradient) {
+                                            // For gradients, we store a special URI format
+                                            await updateTheme({
+                                                wallpaper: {
+                                                    uri: `gradient:${wallpaper.gradient.join(',')}`,
+                                                    opacity: wallpaperOpacity,
+                                                    blur: 0,
+                                                },
+                                            });
+                                        }
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    {wallpaper.type === 'image' ? (
+                                        <Image source={wallpaper.source} style={styles.presetImage} />
+                                    ) : (
+                                        <LinearGradient
+                                            colors={wallpaper.gradient as unknown as readonly [string, string, ...string[]]}
+                                            style={styles.presetGradient}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 1 }}
+                                        />
+                                    )}
+                                    <Text style={[styles.presetName, { color: colors.text }]}>{wallpaper.name}</Text>
+                                    <Text style={[styles.presetCategory, { color: colors.textMuted }]}>{wallpaper.category}</Text>
+                                </TouchableOpacity>
+                            ))}
+
+                            {/* Custom image picker tile */}
+                            <TouchableOpacity style={styles.presetCard} onPress={handleWallpaperPick} activeOpacity={0.7}>
+                                <View style={[styles.customPickerTile, { backgroundColor: colors.backgroundDark, borderColor: colors.border }]}>
+                                    <Ionicons name="add-outline" size={28} color={colors.primary} />
                                 </View>
-                                <View style={[styles.previewAction, { backgroundColor: colors.expenseLight }]}>
-                                    <Ionicons name="arrow-up" size={20} color={colors.expense} />
-                                    <Text style={[styles.previewActionText, { color: colors.expense }]}>Wydatek</Text>
-                                </View>
-                            </View>
+                                <Text style={[styles.presetName, { color: colors.primary }]}>Własna</Text>
+                                <Text style={[styles.presetCategory, { color: colors.textMuted }]}>Z galerii</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 </AnimatedCard>
@@ -405,7 +468,7 @@ export default function Customize() {
                     </View>
                 </TouchableOpacity>
 
-                <View style={{ height: 100 }} />
+                <View style={{ height: 20 }} />
             </ScrollView>
         </SafeAreaView>
     );
@@ -422,9 +485,22 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
         width: '100%',
         height: '100%',
     },
-    header: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg },
-    title: { fontSize: scaleFont(30), fontWeight: '800', letterSpacing: -0.8, fontFamily },
-    subtitle: { fontSize: scaleFont(15), marginTop: 6, fontWeight: '500', fontFamily },
+    header: {
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.lg,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    hamburger: {
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 12,
+        marginRight: Spacing.sm,
+    },
+    title: { fontSize: scaleFont(24), fontWeight: '800', letterSpacing: -0.8, fontFamily },
+    subtitle: { fontSize: scaleFont(14), marginTop: 4, fontWeight: '500', fontFamily },
     scrollContent: { flex: 1, paddingHorizontal: Spacing.xl },
     section: {
         borderRadius: 20,
@@ -433,7 +509,7 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
         ...Shadows.medium,
     },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg },
-    sectionTitle: { fontSize: scaleFont(19), fontWeight: '800', letterSpacing: -0.5, fontFamily },
+    sectionTitle: { fontSize: scaleFont(17), fontWeight: '700', letterSpacing: -0.3, fontFamily },
     themesGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -517,60 +593,81 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
         gap: Spacing.sm,
     },
     clearCustomBtnText: { fontSize: scaleFont(13), fontWeight: '600', fontFamily },
-    wallpaperPreview: { gap: Spacing.md },
-    wallpaperImage: {
-        width: '100%',
-        height: 200,
+
+    /* ── Wallpaper Presets ── */
+    activeWallpaperBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.backgroundDark,
         borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        marginBottom: Spacing.lg,
+        gap: Spacing.md,
     },
-    wallpaperControls: { gap: Spacing.md },
-    opacityControl: { gap: Spacing.sm },
+    activeThumb: {
+        width: 48,
+        height: 48,
+        borderRadius: BorderRadius.md,
+    },
+    removeIconBtn: {
+        padding: 4,
+    },
     controlLabel: { fontSize: scaleFont(14), fontWeight: '600', fontFamily },
     sliderContainer: {
         flexDirection: 'row',
-        gap: Spacing.md,
+        gap: Spacing.sm,
         alignItems: 'center',
     },
     sliderDot: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
     },
-    removeBtn: {
+    presetGrid: {
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        padding: Spacing.md,
-        borderRadius: BorderRadius.md,
-        justifyContent: 'center',
+        flexWrap: 'wrap',
+        gap: Spacing.md,
     },
-    removeBtnText: { fontSize: scaleFont(15), fontWeight: '700', fontFamily },
-    addWallpaperBtn: { borderRadius: BorderRadius.lg, overflow: 'hidden' },
-    addWallpaperGradient: {
-        padding: Spacing.xxl,
-        alignItems: 'center',
-        gap: Spacing.sm,
-    },
-    addWallpaperText: { fontSize: scaleFont(16), fontWeight: '700', color: '#FFF', fontFamily },
-    previewContainer: { gap: Spacing.md },
-    previewCard: {
-        padding: Spacing.xxl,
-        borderRadius: BorderRadius.xl,
+    presetCard: {
+        width: '30%',
         alignItems: 'center',
     },
-    previewAmount: { fontSize: scaleFont(36), fontWeight: '900', color: '#FFF', letterSpacing: -1, fontFamily },
-    previewLabel: { fontSize: scaleFont(14), color: 'rgba(255,255,255,0.8)', marginTop: 4, fontFamily },
-    previewActions: { flexDirection: 'row', gap: Spacing.md },
-    previewAction: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        padding: Spacing.lg,
+    presetImage: {
+        width: '100%',
+        aspectRatio: 1,
         borderRadius: BorderRadius.lg,
+        marginBottom: Spacing.xs,
+    },
+    presetGradient: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: BorderRadius.lg,
+        marginBottom: Spacing.xs,
+    },
+    presetName: {
+        fontSize: scaleFont(12),
+        fontWeight: '600',
+        textAlign: 'center',
+        fontFamily,
+    },
+    presetCategory: {
+        fontSize: scaleFont(10),
+        fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 1,
+        fontFamily,
+    },
+    customPickerTile: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: BorderRadius.lg,
+        marginBottom: Spacing.xs,
+        borderWidth: 2,
+        borderStyle: 'dashed',
+        alignItems: 'center',
         justifyContent: 'center',
     },
-    previewActionText: { fontSize: scaleFont(15), fontWeight: '700', fontFamily },
+
     resetBtn: { marginTop: Spacing.md },
     resetBtnInner: {
         flexDirection: 'row',

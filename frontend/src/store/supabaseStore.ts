@@ -166,7 +166,7 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
         const normalizedEmail = email.trim().toLowerCase();
         if (normalizedEmail === DEMO_LOGIN_EMAIL && password === DEMO_LOGIN_PASSWORD) {
             const now = new Date().toISOString();
-            const demoUserId = 'demo-user';
+            const demoUserId = '00000000-0000-0000-0000-000000000001';
             const demoWalletId = 'demo-wallet-1';
             const demoWallet: WalletWithMembers = {
                 id: demoWalletId,
@@ -543,6 +543,8 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
     loadSubscriptions: async () => {
         const user = get().user;
         if (!user) return;
+        // Demo user: subscriptions are already in local state
+        if (user.id === '00000000-0000-0000-0000-000000000001') return;
         const subscriptions = await db.getSubscriptions(user.id);
         set({ subscriptions });
     },
@@ -550,36 +552,67 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
     addSubscription: async (subscription) => {
         const user = get().user;
         if (!user) return;
+
+        // Demo user: add locally
+        if (user.id === '00000000-0000-0000-0000-000000000001') {
+            const now = new Date().toISOString();
+            const newSub = {
+                ...subscription,
+                id: `demo-sub-${Date.now()}`,
+                user_id: user.id,
+                created_at: now,
+                updated_at: now,
+            } as any;
+            set({ subscriptions: [...get().subscriptions, newSub] });
+            return;
+        }
+
         const newSubscription = await db.createSubscription({
             ...subscription,
             user_id: user.id,
         });
 
         if (newSubscription.reminder_enabled) {
-            await notificationService.scheduleSubscriptionReminder(
-                newSubscription.id,
-                newSubscription.name,
-                newSubscription.next_payment_date,
-                newSubscription.reminder_days_before || 1
-            );
+            try {
+                await notificationService.scheduleSubscriptionReminder(
+                    newSubscription.id,
+                    newSubscription.name,
+                    newSubscription.next_payment_date,
+                    newSubscription.reminder_days_before || 1
+                );
+            } catch (e) {
+                console.warn('Notification scheduling failed:', e);
+            }
         }
 
         await get().loadSubscriptions();
     },
 
     updateSubscription: async (id, updates) => {
+        const user = get().user;
+        // Demo user: update locally
+        if (user?.id === '00000000-0000-0000-0000-000000000001') {
+            const subs = get().subscriptions.map(s => s.id === id ? { ...s, ...updates } : s);
+            set({ subscriptions: subs });
+            return;
+        }
+
         const updatedSubscription = await db.updateSubscription(id, updates);
 
         if (updatedSubscription) {
-            if (updatedSubscription.reminder_enabled) {
-                await notificationService.scheduleSubscriptionReminder(
-                    updatedSubscription.id,
-                    updatedSubscription.name,
-                    updatedSubscription.next_payment_date,
-                    updatedSubscription.reminder_days_before || 1
-                );
-            } else {
-                await notificationService.cancelSubscriptionReminder(updatedSubscription.id);
+            try {
+                if (updatedSubscription.reminder_enabled) {
+                    await notificationService.scheduleSubscriptionReminder(
+                        updatedSubscription.id,
+                        updatedSubscription.name,
+                        updatedSubscription.next_payment_date,
+                        updatedSubscription.reminder_days_before || 1
+                    );
+                } else {
+                    await notificationService.cancelSubscriptionReminder(updatedSubscription.id);
+                }
+            } catch (e) {
+                console.warn('Notification update failed:', e);
             }
         }
 
@@ -587,8 +620,15 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
     },
 
     deleteSubscription: async (id) => {
+        const user = get().user;
+        // Demo user: delete locally
+        if (user?.id === '00000000-0000-0000-0000-000000000001') {
+            set({ subscriptions: get().subscriptions.filter(s => s.id !== id) });
+            return;
+        }
+
         await db.deleteSubscription(id);
-        await notificationService.cancelSubscriptionReminder(id);
+        try { await notificationService.cancelSubscriptionReminder(id); } catch (e) { /* ignore */ }
         await get().loadSubscriptions();
     },
 

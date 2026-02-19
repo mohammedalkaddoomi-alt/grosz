@@ -96,11 +96,11 @@ export const WorkCalculatorModal: React.FC<WorkCalculatorModalProps> = ({
                     <View style={styles.header}>
                         <View style={styles.headerLeft}>
                             <LinearGradient colors={Gradients.blue} style={styles.headerIcon}>
-                                <Ionicons name="calculator" size={24} color={Colors.white} />
+                                <Ionicons name="time" size={24} color={Colors.white} />
                             </LinearGradient>
                             <View>
-                                <Text style={styles.headerTitle}>Kalkulator pracy</Text>
-                                <Text style={styles.headerSubtitle}>Ile musisz pracować?</Text>
+                                <Text style={styles.headerTitle}>Ile godzin?</Text>
+                                <Text style={styles.headerSubtitle}>Sprawdź ile musisz pracować</Text>
                             </View>
                         </View>
                         <AnimatedButton onPress={onClose} hapticFeedback="light">
@@ -206,7 +206,60 @@ export const WorkCalculatorModal: React.FC<WorkCalculatorModalProps> = ({
                                                 <Ionicons name="people" size={20} color={Colors.shared} />
                                                 <Text style={styles.sharedTitle}>Wspólny portfel</Text>
                                             </View>
-                                            {sharedWalletMembers.map((member, index) => {
+
+                                            {/* Combined Calculation — both working together */}
+                                            {(() => {
+                                                const parsedPrice = parseFloat(itemPrice);
+                                                if (!parsedPrice || parsedPrice <= 0) return null;
+
+                                                // Calculate own hourly rate
+                                                let ownHourly = wageSettings!.wage_amount;
+                                                if (wageSettings!.wage_period === 'daily') ownHourly /= 8;
+                                                if (wageSettings!.wage_period === 'weekly') ownHourly /= 40;
+                                                if (wageSettings!.wage_period === 'monthly') ownHourly /= 160;
+
+                                                // Sum all hourly rates (own + members)
+                                                let combinedHourly = ownHourly;
+                                                const membersWithWage = sharedWalletMembers.filter(m => m.wageSettings);
+                                                membersWithWage.forEach(m => {
+                                                    let mHourly = m.wageSettings!.wage_amount;
+                                                    if (m.wageSettings!.wage_period === 'daily') mHourly /= 8;
+                                                    if (m.wageSettings!.wage_period === 'weekly') mHourly /= 40;
+                                                    if (m.wageSettings!.wage_period === 'monthly') mHourly /= 160;
+                                                    combinedHourly += mHourly;
+                                                });
+
+                                                if (!Number.isFinite(combinedHourly) || combinedHourly <= 0) return null;
+                                                const combinedHours = parsedPrice / combinedHourly;
+                                                const totalPeople = membersWithWage.length + 1;
+
+                                                return totalPeople > 1 ? (
+                                                    <LinearGradient
+                                                        colors={['#6C5CE7', '#a29bfe']}
+                                                        style={styles.combinedCard}
+                                                    >
+                                                        <View style={styles.combinedIcon}>
+                                                            <Ionicons name="people-circle" size={28} color={Colors.white} />
+                                                        </View>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={styles.combinedLabel}>
+                                                                Razem ({totalPeople} osoby)
+                                                            </Text>
+                                                            <Text style={styles.combinedValue}>
+                                                                {formatTime(combinedHours)}
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.combinedBadge}>
+                                                            <Text style={styles.combinedBadgeText}>
+                                                                {Math.round((1 - combinedHours / calculation.hoursNeeded) * 100)}% szybciej
+                                                            </Text>
+                                                        </View>
+                                                    </LinearGradient>
+                                                ) : null;
+                                            })()}
+
+                                            {/* Individual member breakdown */}
+                                            {sharedWalletMembers.map((member) => {
                                                 if (!member.wageSettings) return null;
                                                 const memberWage = member.wageSettings.wage_amount;
                                                 const memberPeriod = member.wageSettings.wage_period;
@@ -230,7 +283,7 @@ export const WorkCalculatorModal: React.FC<WorkCalculatorModalProps> = ({
                                                             <View style={styles.memberDetails}>
                                                                 <Text style={styles.memberName}>{member.name}</Text>
                                                                 <Text style={styles.memberWage}>
-                                                                    {formatMoney(member.wageSettings.wage_amount)} / {member.wageSettings.wage_period === 'hourly' ? 'godz' : 'dzień'}
+                                                                    {formatMoney(member.wageSettings.wage_amount)} / {member.wageSettings.wage_period === 'hourly' ? 'godz' : member.wageSettings.wage_period === 'daily' ? 'dzień' : member.wageSettings.wage_period === 'weekly' ? 'tydz' : 'mies'}
                                                                 </Text>
                                                             </View>
                                                         </View>
@@ -242,6 +295,16 @@ export const WorkCalculatorModal: React.FC<WorkCalculatorModalProps> = ({
                                                     </View>
                                                 );
                                             })}
+
+                                            {/* Prompt for members without wage */}
+                                            {sharedWalletMembers.some(m => !m.wageSettings) && (
+                                                <View style={styles.noWageHint}>
+                                                    <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+                                                    <Text style={styles.noWageHintText}>
+                                                        Niektórzy członkowie nie ustawili stawki
+                                                    </Text>
+                                                </View>
+                                            )}
                                         </View>
                                     </AnimatedCard>
                                 )}
@@ -538,5 +601,58 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: Colors.primary,
         letterSpacing: -0.3,
+    },
+    combinedCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: Spacing.lg,
+        borderRadius: BorderRadius.xl,
+        marginBottom: Spacing.md,
+        gap: Spacing.md,
+    },
+    combinedIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: BorderRadius.full,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    combinedLabel: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.85)',
+        fontWeight: '600',
+    },
+    combinedValue: {
+        fontSize: 24,
+        fontWeight: '900',
+        color: Colors.white,
+        letterSpacing: -1,
+        marginTop: 2,
+    },
+    combinedBadge: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: BorderRadius.full,
+    },
+    combinedBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: Colors.white,
+    },
+    noWageHint: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingTop: Spacing.md,
+        marginTop: Spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: Colors.borderLight,
+    },
+    noWageHintText: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        fontStyle: 'italic',
     },
 });

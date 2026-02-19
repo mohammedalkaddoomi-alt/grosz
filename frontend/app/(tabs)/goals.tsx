@@ -8,11 +8,14 @@ import { useStore } from '../../src/store/store';
 import { db } from '../../src/services/database';
 import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
 import { Goal, GoalActivity } from '../../src/types';
+import { useDrawer } from '../../src/contexts/DrawerContext';
+import { WallpaperBackground } from '../../src/components/WallpaperBackground';
 
 const GOAL_EMOJIS = ['🎯', '🏠', '🚗', '✈️', '💻', '📱', '🎓', '💍', '🏖️', '🎸', '🎮', '📷', '👶', '🐕', '💪', '🏋️', '🚀', '💎', '🎁', '🏦'];
 
 export default function Goals() {
   const { colors, settings, fontFamily, scaleFont } = useTheme();
+  const { openDrawer } = useDrawer();
   const styles = useMemo(() => getStyles(colors, fontFamily, scaleFont), [colors, fontFamily, scaleFont]);
   const { user, goals, activeWallet, loadGoals, addGoal, contributeToGoal, deleteGoal } = useStore();
   const [refreshing, setRefreshing] = useState(false);
@@ -143,16 +146,13 @@ export default function Goals() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Wallpaper Background */}
-      {settings.wallpaper && (
-        <Image
-          source={{ uri: settings.wallpaper.uri }}
-          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
-          blurRadius={settings.wallpaper.blur}
-        />
-      )}
+      {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
       {/* Header */}
       <View style={styles.header}>
-        <View>
+        <TouchableOpacity onPress={openDrawer} style={styles.hamburger} activeOpacity={0.7}>
+          <Ionicons name="menu-outline" size={26} color={colors.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Cele oszczędnościowe</Text>
           <Text style={styles.subtitle}>
             {activeWallet?.is_shared
@@ -305,7 +305,7 @@ export default function Goals() {
           </View>
         )}
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
 
       {/* New Goal Modal */}
@@ -462,7 +462,8 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  title: { fontSize: scaleFont(30), fontWeight: '800', color: colors.text, letterSpacing: -0.8, fontFamily },
+  title: { fontSize: scaleFont(24), fontWeight: '800', color: colors.text, letterSpacing: -0.8, fontFamily },
+  hamburger: { width: 44, height: 44, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, marginRight: Spacing.sm },
   subtitle: { fontSize: scaleFont(15), color: colors.textLight, marginTop: 6, fontWeight: '500', fontFamily },
   addBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', ...Shadows.medium },
   addBtnGradient: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },

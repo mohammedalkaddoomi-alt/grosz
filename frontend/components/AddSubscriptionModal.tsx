@@ -116,7 +116,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                 <View style={styles.container}>
                     <View style={[styles.content, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
                         <View style={styles.header}>
-                            <Text style={[styles.title, { color: colors.text }]}>New Subscription</Text>
+                            <Text style={[styles.title, { color: colors.text }]}>Nowa subskrypcja</Text>
                             <TouchableOpacity onPress={closeModal} style={styles.closeButton} disabled={saving}>
                                 <Ionicons name="close" size={24} color={colors.text} />
                             </TouchableOpacity>
@@ -124,14 +124,14 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
 
                         <ScrollView style={styles.form}>
                             <View style={styles.inputGroup}>
-                                <Text style={[styles.label, { color: colors.text }]}>Name</Text>
+                                <Text style={[styles.label, { color: colors.text }]}>Nazwa</Text>
                                 <TextInput
                                     style={[styles.input, {
                                         color: colors.text,
                                         backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
                                         borderColor: isDark ? '#3A3A3C' : '#E5E5EA'
                                     }]}
-                                    placeholder="Netflix, Spotify, etc."
+                                    placeholder="Netflix, Spotify, itp."
                                     placeholderTextColor={colors.textLight}
                                     value={name}
                                     onChangeText={setName}
@@ -140,7 +140,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
 
                             <View style={styles.row}>
                                 <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                                    <Text style={[styles.label, { color: colors.text }]}>Price</Text>
+                                    <Text style={[styles.label, { color: colors.text }]}>Cena</Text>
                                     <TextInput
                                         style={[styles.input, {
                                             color: colors.text,
@@ -155,7 +155,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                                     />
                                 </View>
                                 <View style={[styles.inputGroup, { width: 80 }]}>
-                                    <Text style={[styles.label, { color: colors.text }]}>Currency</Text>
+                                    <Text style={[styles.label, { color: colors.text }]}>Waluta</Text>
                                     <TextInput
                                         style={[styles.input, {
                                             color: colors.text,
@@ -170,7 +170,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                             </View>
 
                             <View style={styles.inputGroup}>
-                                <Text style={[styles.label, { color: colors.text }]}>Billing Cycle</Text>
+                                <Text style={[styles.label, { color: colors.text }]}>Okres rozliczeniowy</Text>
                                 <View style={styles.segmentContainer}>
                                     {(['weekly', 'monthly', 'yearly'] as const).map((cycle) => (
                                         <TouchableOpacity
@@ -186,7 +186,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                                                 styles.segmentText,
                                                 { color: billingCycle === cycle ? '#FFFFFF' : colors.text }
                                             ]}>
-                                                {cycle.charAt(0).toUpperCase() + cycle.slice(1)}
+                                                {cycle === 'weekly' ? 'Tygodniowo' : cycle === 'monthly' ? 'Miesięcznie' : 'Rocznie'}
                                             </Text>
                                         </TouchableOpacity>
                                     ))}
@@ -194,7 +194,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                             </View>
 
                             <View style={styles.inputGroup}>
-                                <Text style={[styles.label, { color: colors.text }]}>Next Payment</Text>
+                                <Text style={[styles.label, { color: colors.text }]}>Następna płatność</Text>
                                 <TouchableOpacity
                                     style={[styles.dateButton, {
                                         backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
@@ -203,7 +203,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                                     onPress={() => setShowDatePicker(true)}
                                 >
                                     <Text style={{ color: colors.text }}>
-                                        {nextPaymentDate.toLocaleDateString()}
+                                        {nextPaymentDate.toLocaleDateString('pl-PL')}
                                     </Text>
                                     <Ionicons name="calendar" size={20} color={colors.textLight} />
                                 </TouchableOpacity>
@@ -223,7 +223,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
 
                             <View style={styles.inputGroup}>
                                 <View style={styles.switchRow}>
-                                    <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Remind me</Text>
+                                    <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Przypomnienie</Text>
                                     <TouchableOpacity
                                         style={[
                                             styles.switch,
@@ -240,7 +240,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
 
                                 {reminderEnabled && (
                                     <View style={styles.reminderInputContainer}>
-                                        <Text style={{ color: colors.text }}>Days before:</Text>
+                                        <Text style={{ color: colors.text }}>Dni przed:</Text>
                                         <TextInput
                                             style={[styles.smallInput, {
                                                 color: colors.text,
@@ -262,7 +262,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                                 onPress={closeModal}
                                 disabled={saving}
                             >
-                                <Text style={[styles.buttonText, { color: colors.text }]}>Cancel</Text>
+                                <Text style={[styles.buttonText, { color: colors.text }]}>Anuluj</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={[styles.button, styles.saveButton, { backgroundColor: colors.primary }, saving && styles.buttonDisabled]}
@@ -272,7 +272,7 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({ visi
                                 {saving ? (
                                     <ActivityIndicator size="small" color="#FFFFFF" />
                                 ) : (
-                                    <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>Save</Text>
+                                    <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>Zapisz</Text>
                                 )}
                             </TouchableOpacity>
                         </View>
