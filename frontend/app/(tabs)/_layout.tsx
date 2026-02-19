@@ -1,31 +1,65 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Platform, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../../src/constants/theme';
+import { BorderRadius, Elevation, Spacing } from '../../src/constants/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
+
+const TabIcon = ({
+  focused,
+  active,
+  inactive,
+  color,
+  primary,
+}: {
+  focused: boolean;
+  active: keyof typeof Ionicons.glyphMap;
+  inactive: keyof typeof Ionicons.glyphMap;
+  color: string;
+  primary: string;
+}) => (
+  <View
+    style={[
+      styles.tabIconWrap,
+      focused && { backgroundColor: `${primary}1A`, transform: [{ translateY: -1 }] },
+    ]}
+  >
+    <Ionicons name={focused ? active : inactive} size={20} color={focused ? primary : color} />
+  </View>
+);
 
 export default function TabLayout() {
+  const { colors, fontFamily, scaleFont } = useTheme();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: Colors.card,
-          borderTopWidth: 0,
-          height: Platform.OS === 'ios' ? 88 : 70,
+          position: 'absolute',
+          left: Spacing.lg,
+          right: Spacing.lg,
+          bottom: Platform.OS === 'ios' ? Spacing.lg : Spacing.md,
+          height: Platform.OS === 'ios' ? 80 : 72,
           paddingTop: 10,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
-          ...Shadows.medium,
+          paddingBottom: Platform.OS === 'ios' ? 22 : 12,
+          backgroundColor: colors.card,
+          borderTopWidth: 0,
+          borderRadius: BorderRadius.xxl,
+          ...Elevation.level3,
         },
-        tabBarLabelStyle: { 
-          fontSize: 11, 
-          fontWeight: '600',
-          marginTop: 2,
+        tabBarItemStyle: {
+          paddingHorizontal: 2,
         },
-        tabBarIconStyle: {
-          marginBottom: -4,
+        tabBarLabelStyle: {
+          fontSize: scaleFont(11),
+          fontWeight: '700',
+          letterSpacing: 0.2,
+          marginTop: 1,
+          fontFamily,
         },
       }}
     >
@@ -34,9 +68,7 @@ export default function TabLayout() {
         options={{
           title: 'Główna',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeIcon : undefined}>
-              <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
-            </View>
+            <TabIcon focused={focused} active="home" inactive="home-outline" color={color} primary={colors.primary} />
           ),
         }}
       />
@@ -45,9 +77,7 @@ export default function TabLayout() {
         options={{
           title: 'Portfele',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeIcon : undefined}>
-              <Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={24} color={color} />
-            </View>
+            <TabIcon focused={focused} active="wallet" inactive="wallet-outline" color={color} primary={colors.primary} />
           ),
         }}
       />
@@ -55,9 +85,13 @@ export default function TabLayout() {
         name="add"
         options={{
           title: 'Dodaj',
+          tabBarLabel: '',
+          tabBarItemStyle: { marginTop: -16 },
           tabBarIcon: ({ focused }) => (
-            <View style={styles.addButton}>
-              <Ionicons name="add" size={28} color={Colors.white} />
+            <View style={styles.addButtonOuter}>
+              <LinearGradient colors={[colors.primary, colors.accent]} style={styles.addButton}>
+                <Ionicons name="add" size={26} color={colors.white} />
+              </LinearGradient>
             </View>
           ),
         }}
@@ -67,9 +101,7 @@ export default function TabLayout() {
         options={{
           title: 'Cele',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeIcon : undefined}>
-              <Ionicons name={focused ? 'flag' : 'flag-outline'} size={24} color={color} />
-            </View>
+            <TabIcon focused={focused} active="flag" inactive="flag-outline" color={color} primary={colors.primary} />
           ),
         }}
       />
@@ -78,10 +110,14 @@ export default function TabLayout() {
         options={{
           title: 'Profil',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeIcon : undefined}>
-              <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
-            </View>
+            <TabIcon focused={focused} active="person" inactive="person-outline" color={color} primary={colors.primary} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="customize"
+        options={{
+          href: null, // Move to profile/settings flow instead of crowding bottom nav
         }}
       />
       <Tabs.Screen
@@ -96,22 +132,44 @@ export default function TabLayout() {
           href: null, // Hide from tab bar but keep accessible
         }}
       />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          href: null, // Hide from tab bar but keep accessible
+        }}
+      />
+      <Tabs.Screen
+        name="security"
+        options={{
+          href: null, // Hide from tab bar but keep accessible
+        }}
+      />
     </Tabs>
   );
 }
 
-const styles = {
-  activeIcon: {
-    transform: [{ scale: 1.1 }],
+const styles = StyleSheet.create({
+  tabIconWrap: {
+    width: 34,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonOuter: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    padding: 3,
   },
   addButton: {
     width: 52,
     height: 52,
     borderRadius: 16,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginBottom: 20,
-    ...Shadows.medium,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-};
+});

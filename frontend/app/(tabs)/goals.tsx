@@ -1,33 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, RefreshControl, Image } from 'react-native';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/store';
+import { db } from '../../src/services/database';
 import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
+import { Goal, GoalActivity } from '../../src/types';
 
 const GOAL_EMOJIS = ['🎯', '🏠', '🚗', '✈️', '💻', '📱', '🎓', '💍', '🏖️', '🎸', '🎮', '📷', '👶', '🐕', '💪', '🏋️', '🚀', '💎', '🎁', '🏦'];
 
 export default function Goals() {
-  const { goals, loadGoals, addGoal, contributeToGoal, deleteGoal } = useStore();
+  const { colors, settings, fontFamily, scaleFont } = useTheme();
+  const styles = useMemo(() => getStyles(colors, fontFamily, scaleFont), [colors, fontFamily, scaleFont]);
+  const { user, goals, activeWallet, loadGoals, addGoal, contributeToGoal, deleteGoal } = useStore();
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // New goal modal
   const [showNewGoalModal, setShowNewGoalModal] = useState(false);
   const [goalName, setGoalName] = useState('');
   const [goalAmount, setGoalAmount] = useState('');
   const [goalEmoji, setGoalEmoji] = useState('🎯');
   const [creating, setCreating] = useState(false);
-  
+
   // Contribute modal
   const [showContributeModal, setShowContributeModal] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<any>(null);
   const [contributeAmount, setContributeAmount] = useState('');
   const [contributing, setContributing] = useState(false);
+  const [goalActivities, setGoalActivities] = useState<GoalActivity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
 
   useEffect(() => {
-    loadGoals();
-  }, []);
+    void loadGoals();
+  }, [activeWallet?.id, loadGoals]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -61,16 +68,31 @@ export default function Goals() {
   };
 
   const handleContribute = async () => {
-    if (!contributeAmount || parseFloat(contributeAmount) <= 0) return Alert.alert('Błąd', 'Podaj kwotę');
+    const amount = parseFloat(contributeAmount);
+    if (!contributeAmount || !Number.isFinite(amount) || amount <= 0) return Alert.alert('Błąd', 'Podaj kwotę');
     if (!selectedGoal) return;
 
+    const remaining = Math.max((selectedGoal.target_amount || 0) - (selectedGoal.current_amount || 0), 0);
+    if (remaining <= 0) {
+      Alert.alert('Info', 'Ten cel jest już ukończony');
+      return;
+    }
+
+    const effectiveAmount = Math.min(amount, remaining);
     setContributing(true);
     try {
-      await contributeToGoal(selectedGoal.id, parseFloat(contributeAmount));
+      await contributeToGoal(selectedGoal.id, effectiveAmount);
       setShowContributeModal(false);
       setContributeAmount('');
       setSelectedGoal(null);
-      Alert.alert('Świetnie! 💪', 'Wpłata została dodana');
+
+      if (effectiveAmount < amount) {
+        Alert.alert('Świetnie! 💪', `Dodano ${formatMoney(effectiveAmount)}. Cel został domknięty.`);
+      } else if (effectiveAmount === remaining) {
+        Alert.alert('Gratulacje! 🎉', 'Cel został osiągnięty.');
+      } else {
+        Alert.alert('Świetnie! 💪', 'Wpłata została dodana');
+      }
     } catch (e: any) {
       Alert.alert('Błąd', e.message);
     } finally {
@@ -84,39 +106,70 @@ export default function Goals() {
       `Usunąć "${goal.name}"?`,
       [
         { text: 'Nie', style: 'cancel' },
-        { text: 'Tak', style: 'destructive', onPress: () => deleteGoal(goal.id) },
+        {
+          text: 'Tak',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteGoal(goal.id);
+            } catch (error: any) {
+              Alert.alert('Błąd', error?.message || 'Nie udało się usunąć celu');
+            }
+          },
+        },
       ]
     );
   };
 
   const openContributeModal = (goal: any) => {
     setSelectedGoal(goal);
+    setGoalActivities([]);
     setShowContributeModal(true);
+    setLoadingActivities(true);
+    db.getGoalActivities(goal.id, 15)
+      .then((activities) => setGoalActivities(activities))
+      .catch((error) => {
+        console.error('Failed to load goal activities:', error);
+        setGoalActivities([]);
+      })
+      .finally(() => setLoadingActivities(false));
   };
 
-  const activeGoals = goals.filter(g => !g.completed);
-  const completedGoals = goals.filter(g => g.completed);
-  const totalSaved = goals.reduce((acc, g) => acc + g.current_amount, 0);
-  const totalTarget = goals.reduce((acc, g) => acc + g.target_amount, 0);
+  const activeGoals = (goals || []).filter((g: any) => !g.completed);
+  const completedGoals = (goals || []).filter((g: any) => g.completed);
+  const totalSaved = goals.reduce((acc: number, g: Goal) => acc + g.current_amount, 0);
+  const totalTarget = goals.reduce((acc: number, g: Goal) => acc + g.target_amount, 0);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {/* Wallpaper Background */}
+      {settings.wallpaper && (
+        <Image
+          source={{ uri: settings.wallpaper.uri }}
+          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
+          blurRadius={settings.wallpaper.blur}
+        />
+      )}
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Cele oszczędnościowe</Text>
-          <Text style={styles.subtitle}>Osiągaj swoje marzenia 🌟</Text>
+          <Text style={styles.subtitle}>
+            {activeWallet?.is_shared
+              ? `Wspólne cele: ${activeWallet.name}`
+              : 'Osiągaj swoje marzenia 🌟'}
+          </Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowNewGoalModal(true)}>
           <LinearGradient colors={Gradients.primary} style={styles.addBtnGradient}>
-            <Ionicons name="add" size={24} color={Colors.white} />
+            <Ionicons name="add" size={24} color={colors.white} />
           </LinearGradient>
         </TouchableOpacity>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         contentContainerStyle={styles.scrollContent}
       >
         {/* Summary Card */}
@@ -148,7 +201,7 @@ export default function Goals() {
         {activeGoals.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Aktywne cele ({activeGoals.length})</Text>
-            {activeGoals.map((goal) => {
+            {activeGoals.map((goal: Goal) => {
               const progress = goal.target_amount > 0 ? Math.min((goal.current_amount / goal.target_amount) * 100, 100) : 0;
               const remaining = goal.target_amount - goal.current_amount;
               return (
@@ -185,8 +238,16 @@ export default function Goals() {
                     <Text style={styles.goalRemaining}>
                       {remaining > 0 ? `Pozostało: ${formatMoney(remaining)}` : 'Cel osiągnięty! 🎉'}
                     </Text>
+                    {!!goal.user_name && (
+                      <View style={styles.goalMetaBadge}>
+                        <Ionicons name="person-outline" size={12} color={colors.textMuted} />
+                        <Text style={styles.goalMetaText}>
+                          {goal.user_id === user?.id ? 'Ty' : goal.user_name}
+                        </Text>
+                      </View>
+                    )}
                     <View style={styles.contributeBtn}>
-                      <Ionicons name="add-circle" size={18} color={Colors.primary} />
+                      <Ionicons name="add-circle" size={18} color={colors.primary} />
                       <Text style={styles.contributeBtnText}>Wpłać</Text>
                     </View>
                   </View>
@@ -200,7 +261,7 @@ export default function Goals() {
         {completedGoals.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Ukończone cele ({completedGoals.length}) 🏆</Text>
-            {completedGoals.map((goal) => (
+            {completedGoals.map((goal: Goal) => (
               <TouchableOpacity
                 key={goal.id}
                 style={[styles.goalCard, styles.goalCardCompleted]}
@@ -214,8 +275,13 @@ export default function Goals() {
                   <View style={styles.goalInfo}>
                     <Text style={styles.goalName}>{goal.name}</Text>
                     <Text style={styles.goalAmountsCompleted}>{formatMoney(goal.target_amount)}</Text>
+                    {!!goal.user_name && (
+                      <Text style={styles.completedMetaText}>
+                        Autor: {goal.user_id === user?.id ? 'Ty' : goal.user_name}
+                      </Text>
+                    )}
                   </View>
-                  <Ionicons name="checkmark-circle" size={28} color={Colors.income} />
+                  <Ionicons name="checkmark-circle" size={28} color={colors.income} />
                 </View>
               </TouchableOpacity>
             ))}
@@ -226,13 +292,13 @@ export default function Goals() {
         {goals.length === 0 && (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="flag" size={48} color={Colors.primary} />
+              <Ionicons name="flag" size={48} color={colors.primary} />
             </View>
             <Text style={styles.emptyTitle}>Brak celów</Text>
             <Text style={styles.emptyText}>Stwórz swój pierwszy cel oszczędnościowy i zacznij realizować marzenia!</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewGoalModal(true)}>
               <LinearGradient colors={Gradients.primary} style={styles.emptyBtnGradient}>
-                <Ionicons name="add" size={20} color={Colors.white} />
+                <Ionicons name="add" size={20} color={colors.white} />
                 <Text style={styles.emptyBtnText}>Nowy cel</Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -249,7 +315,7 @@ export default function Goals() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nowy cel 🎯</Text>
               <TouchableOpacity onPress={() => setShowNewGoalModal(false)}>
-                <Ionicons name="close" size={24} color={Colors.text} />
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -259,7 +325,7 @@ export default function Goals() {
               value={goalName}
               onChangeText={setGoalName}
               placeholder="Np. Wakacje w Grecji"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
             />
 
             <Text style={styles.modalLabel}>Kwota docelowa (zł)</Text>
@@ -268,7 +334,7 @@ export default function Goals() {
               value={goalAmount}
               onChangeText={setGoalAmount}
               placeholder="5000"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               keyboardType="decimal-pad"
             />
 
@@ -304,7 +370,7 @@ export default function Goals() {
                 <Text style={styles.modalTitle}>{selectedGoal?.name}</Text>
               </View>
               <TouchableOpacity onPress={() => { setShowContributeModal(false); setContributeAmount(''); }}>
-                <Ionicons name="close" size={24} color={Colors.text} />
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -331,7 +397,7 @@ export default function Goals() {
               value={contributeAmount}
               onChangeText={setContributeAmount}
               placeholder="100"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               keyboardType="decimal-pad"
             />
 
@@ -340,6 +406,37 @@ export default function Goals() {
                 <Text style={styles.modalSubmitText}>{contributing ? 'Wpłacam...' : 'Wpłać'}</Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            <Text style={styles.modalLabel}>Aktywność celu</Text>
+            <View style={styles.activitiesList}>
+              {loadingActivities ? (
+                <Text style={styles.activitiesEmptyText}>Ładowanie aktywności...</Text>
+              ) : goalActivities.length === 0 ? (
+                <Text style={styles.activitiesEmptyText}>Brak aktywności</Text>
+              ) : (
+                goalActivities.map((activity) => (
+                  <View key={activity.id} style={styles.activityItem}>
+                    <View style={styles.activityIconWrap}>
+                      <Ionicons
+                        name={activity.action === 'created' ? 'flag-outline' : 'add-circle-outline'}
+                        size={16}
+                        color={activity.action === 'created' ? colors.primary : colors.income}
+                      />
+                    </View>
+                    <View style={styles.activityContent}>
+                      <Text style={styles.activityText}>
+                        {activity.action === 'created'
+                          ? `${activity.user_name || 'Użytkownik'} utworzył cel`
+                          : `${activity.user_name || 'Użytkownik'} wpłacił ${formatMoney(activity.amount || 0)}`}
+                      </Text>
+                      <Text style={styles.activityDate}>
+                        {new Date(activity.created_at).toLocaleString('pl-PL')}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
           </View>
         </View>
       </Modal>
@@ -347,150 +444,204 @@ export default function Goals() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: Spacing.xl, 
+const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size: number) => number) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  wallpaper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  title: { fontSize: 28, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
+  title: { fontSize: scaleFont(30), fontWeight: '800', color: colors.text, letterSpacing: -0.8, fontFamily },
+  subtitle: { fontSize: scaleFont(15), color: colors.textLight, marginTop: 6, fontWeight: '500', fontFamily },
   addBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', ...Shadows.medium },
   addBtnGradient: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingHorizontal: Spacing.xl },
-  summaryCard: { 
-    padding: Spacing.xxl, 
-    borderRadius: BorderRadius.xxl, 
+  summaryCard: {
+    padding: Spacing.xxl + 4,
+    borderRadius: 28,
     marginBottom: Spacing.xl,
-    ...Shadows.large,
+    ...Shadows.premium,
   },
   summaryRow: { flexDirection: 'row', alignItems: 'center' },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.3)' },
-  summaryLabel: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
-  summaryAmount: { fontSize: 22, fontWeight: '700', color: Colors.white, marginTop: 4 },
+  summaryLabel: { fontSize: scaleFont(13), color: 'rgba(255,255,255,0.8)', fontFamily },
+  summaryAmount: { fontSize: scaleFont(24), fontWeight: '800', color: colors.white, marginTop: 6, letterSpacing: -0.8, fontFamily },
   overallProgress: { marginTop: Spacing.xl },
-  overallProgressBar: { 
-    height: 10, 
-    backgroundColor: 'rgba(255,255,255,0.3)', 
-    borderRadius: BorderRadius.full, 
+  overallProgressBar: {
+    height: 10,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: BorderRadius.full,
     overflow: 'hidden',
   },
-  overallProgressFill: { height: '100%', backgroundColor: Colors.white, borderRadius: BorderRadius.full },
-  overallProgressText: { fontSize: 13, color: 'rgba(255,255,255,0.9)', marginTop: Spacing.sm, textAlign: 'center' },
+  overallProgressFill: { height: '100%', backgroundColor: colors.white, borderRadius: BorderRadius.full },
+  overallProgressText: { fontSize: scaleFont(13), color: 'rgba(255,255,255,0.9)', marginTop: Spacing.sm, textAlign: 'center', fontFamily },
   section: { marginBottom: Spacing.xl },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: Spacing.md },
-  goalCard: { 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    padding: Spacing.lg, 
+  sectionTitle: { fontSize: scaleFont(19), fontWeight: '800', color: colors.text, marginBottom: Spacing.md, letterSpacing: -0.5, fontFamily },
+  goalCard: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: Spacing.lg + 2,
     marginBottom: Spacing.md,
-    ...Shadows.small,
+    ...Shadows.medium,
   },
   goalCardCompleted: { opacity: 0.8 },
   goalHeader: { flexDirection: 'row', alignItems: 'center' },
-  goalIcon: { 
-    width: 52, 
-    height: 52, 
-    borderRadius: BorderRadius.lg, 
-    backgroundColor: Colors.primary + '15', 
-    justifyContent: 'center', 
+  goalIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: colors.primary + '15',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  goalIconCompleted: { backgroundColor: Colors.incomeLight },
-  goalEmoji: { fontSize: 26 },
+  goalIconCompleted: { backgroundColor: colors.incomeLight },
+  goalEmoji: { fontSize: scaleFont(26) },
   goalInfo: { flex: 1, marginLeft: Spacing.md },
-  goalName: { fontSize: 17, fontWeight: '600', color: Colors.text },
-  goalAmounts: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
-  goalAmountsCompleted: { fontSize: 14, color: Colors.income, marginTop: 4, fontWeight: '600' },
-  goalPercent: { 
-    backgroundColor: Colors.primary + '15', 
-    paddingHorizontal: Spacing.md, 
-    paddingVertical: Spacing.sm, 
+  goalName: { fontSize: scaleFont(18), fontWeight: '700', color: colors.text, letterSpacing: -0.4, fontFamily },
+  goalAmounts: { fontSize: scaleFont(14), color: colors.textLight, marginTop: 4, fontFamily },
+  goalAmountsCompleted: { fontSize: scaleFont(14), color: colors.income, marginTop: 4, fontWeight: '600', fontFamily },
+  goalPercent: {
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
   },
-  goalPercentText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  progressBar: { 
-    height: 8, 
-    backgroundColor: Colors.backgroundDark, 
-    borderRadius: BorderRadius.full, 
-    marginTop: Spacing.md, 
+  goalPercentText: { fontSize: scaleFont(14), fontWeight: '700', color: colors.primary, fontFamily },
+  progressBar: {
+    height: 8,
+    backgroundColor: colors.backgroundDark,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing.md,
     overflow: 'hidden',
   },
   progressFill: { height: '100%', borderRadius: BorderRadius.full },
   goalFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.md },
-  goalRemaining: { fontSize: 13, color: Colors.textLight },
+  goalRemaining: { fontSize: scaleFont(13), color: colors.textLight, fontFamily },
+  goalMetaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.background,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  goalMetaText: { fontSize: scaleFont(11), color: colors.textMuted, fontWeight: '600', fontFamily },
   contributeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  contributeBtnText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
-  emptyState: { 
-    alignItems: 'center', 
+  contributeBtnText: { fontSize: scaleFont(14), fontWeight: '600', color: colors.primary, fontFamily },
+  completedMetaText: { fontSize: scaleFont(12), color: colors.textMuted, marginTop: 2, fontFamily },
+  emptyState: {
+    alignItems: 'center',
     paddingVertical: Spacing.xxxl * 2,
     paddingHorizontal: Spacing.xxl,
   },
-  emptyIcon: { 
-    width: 96, 
-    height: 96, 
-    borderRadius: BorderRadius.full, 
-    backgroundColor: Colors.primary + '15', 
-    justifyContent: 'center', 
+  emptyIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: BorderRadius.full,
+    backgroundColor: colors.primary + '15',
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.lg,
   },
-  emptyTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
-  emptyText: { fontSize: 15, color: Colors.textLight, marginTop: Spacing.sm, textAlign: 'center', lineHeight: 22 },
+  emptyTitle: { fontSize: scaleFont(22), fontWeight: '700', color: colors.text, fontFamily },
+  emptyText: { fontSize: scaleFont(15), color: colors.textLight, marginTop: Spacing.sm, textAlign: 'center', lineHeight: scaleFont(22), fontFamily },
   emptyBtn: { marginTop: Spacing.xl, borderRadius: BorderRadius.full, overflow: 'hidden', ...Shadows.medium },
   emptyBtnGradient: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.xxl, paddingVertical: Spacing.md },
-  emptyBtnText: { fontSize: 16, fontWeight: '600', color: Colors.white },
-  
+  emptyBtnText: { fontSize: scaleFont(16), fontWeight: '600', color: colors.white, fontFamily },
+
   // Modal styles
-  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  modalContent: { 
-    backgroundColor: Colors.card, 
-    borderTopLeftRadius: BorderRadius.xxl, 
-    borderTopRightRadius: BorderRadius.xxl, 
+  modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xxl,
     maxHeight: '85%',
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   modalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  modalGoalEmoji: { fontSize: 28 },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
-  modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg },
-  modalInput: { 
-    backgroundColor: Colors.background, 
-    borderRadius: BorderRadius.md, 
-    paddingHorizontal: Spacing.lg, 
-    height: 52, 
-    fontSize: 16, 
-    color: Colors.text,
+  modalGoalEmoji: { fontSize: scaleFont(28) },
+  modalTitle: { fontSize: scaleFont(22), fontWeight: '700', color: colors.text, fontFamily },
+  modalLabel: { fontSize: scaleFont(14), fontWeight: '600', color: colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg, fontFamily },
+  modalInput: {
+    backgroundColor: colors.background,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    height: 52,
+    fontSize: scaleFont(16),
+    color: colors.text,
+    fontFamily,
   },
   emojiScroll: { marginBottom: Spacing.md },
-  emojiBtn: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: BorderRadius.md, 
-    backgroundColor: Colors.background, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  emojiBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: Spacing.sm,
   },
-  emojiBtnSelected: { backgroundColor: Colors.primary + '20', borderWidth: 2, borderColor: Colors.primary },
-  emojiBtnText: { fontSize: 24 },
+  emojiBtnSelected: { backgroundColor: colors.primary + '20', borderWidth: 2, borderColor: colors.primary },
+  emojiBtnText: { fontSize: scaleFont(24) },
   goalStats: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
-  goalStatItem: { 
-    flex: 1, 
-    backgroundColor: Colors.background, 
-    padding: Spacing.md, 
+  goalStatItem: {
+    flex: 1,
+    backgroundColor: colors.background,
+    padding: Spacing.md,
     borderRadius: BorderRadius.md,
     alignItems: 'center',
   },
-  goalStatLabel: { fontSize: 12, color: Colors.textLight },
-  goalStatValue: { fontSize: 16, fontWeight: '700', color: Colors.text, marginTop: 4 },
-  goalStatRemaining: { color: Colors.primary },
+  goalStatLabel: { fontSize: scaleFont(12), color: colors.textLight, fontFamily },
+  goalStatValue: { fontSize: scaleFont(16), fontWeight: '700', color: colors.text, marginTop: 4, fontFamily },
+  goalStatRemaining: { color: colors.primary },
+  activitiesList: {
+    marginTop: Spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    maxHeight: 220,
+  },
+  activitiesEmptyText: {
+    fontSize: scaleFont(13),
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+    fontFamily,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  activityIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: BorderRadius.full,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityContent: { flex: 1 },
+  activityText: { fontSize: scaleFont(13), color: colors.text, fontWeight: '600', fontFamily },
+  activityDate: { fontSize: scaleFont(11), color: colors.textMuted, marginTop: 2, fontFamily },
   modalSubmitBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', marginTop: Spacing.xl },
   modalSubmitGradient: { height: 52, justifyContent: 'center', alignItems: 'center' },
-  modalSubmitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
+  modalSubmitText: { fontSize: scaleFont(16), fontWeight: '700', color: colors.white, fontFamily },
 });

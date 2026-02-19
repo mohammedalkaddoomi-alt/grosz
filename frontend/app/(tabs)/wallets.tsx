@@ -1,37 +1,75 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, RefreshControl, FlatList } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, RefreshControl, Image } from 'react-native';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/store';
-import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
+import { Colors, Gradients, Shadows, BorderRadius, Spacing, Typography } from '../../src/constants/theme';
+import { Wallet } from '../../src/types';
+import { AnimatedCard, AnimatedButton } from '../../src/components/AnimatedComponents';
+import { WorkCalculatorModal } from '../../src/components/WorkCalculatorModal';
+import { WageSettingsModal } from '../../src/components/WageSettingsModal';
 
 const WALLET_EMOJIS = ['💰', '💳', '🏦', '💵', '🪙', '💎', '🏠', '🚗', '✈️', '🎓', '👶', '🐕', '🎁', '💒', '🏖️', '🎮', '💼', '🛒', '🍔', '☕'];
 
 export default function Wallets() {
-  const { wallets, loadData, createWallet, deleteWallet, inviteToWallet, removeFromWallet, user } = useStore();
+  const { colors, settings } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const {
+    wallets,
+    activeWallet,
+    setActiveWallet,
+    loadData,
+    createWallet,
+    deleteWallet,
+    inviteToWallet,
+    removeFromWallet,
+    leaveWallet,
+    walletInvitations,
+    loadWalletInvitations,
+    acceptWalletInvitation,
+    rejectWalletInvitation,
+    user,
+    wageSettings,
+    saveWageSettings,
+    calculateWorkTime
+  } = useStore();
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Create wallet modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [walletName, setWalletName] = useState('');
   const [walletEmoji, setWalletEmoji] = useState('💰');
   const [isShared, setIsShared] = useState(false);
   const [creating, setCreating] = useState(false);
-  
+
   // Manage wallet modal
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<any>(null);
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteUsername, setInviteUsername] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  // Work calculator modals
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [showWageSettings, setShowWageSettings] = useState(false);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void Promise.all([loadData(), loadWalletInvitations()]);
+  }, [loadData, loadWalletInvitations]);
+
+  useEffect(() => {
+    if (!showManageModal || !selectedWallet?.id) return;
+    const refreshedWallet = wallets.find((w: Wallet) => w.id === selectedWallet.id);
+    if (refreshedWallet) {
+      setSelectedWallet(refreshedWallet);
+    }
+  }, [wallets, showManageModal, selectedWallet?.id]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await Promise.all([loadData(), loadWalletInvitations()]);
     setRefreshing(false);
   };
 
@@ -68,27 +106,36 @@ export default function Wallets() {
       `Usunąć "${wallet.name}"? Wszystkie transakcje zostaną usunięte.`,
       [
         { text: 'Nie', style: 'cancel' },
-        { text: 'Tak', style: 'destructive', onPress: async () => {
-          try {
-            await deleteWallet(wallet.id);
-            Alert.alert('Sukces', 'Portfel został usunięty');
-          } catch (e: any) {
-            Alert.alert('Błąd', e.message);
+        {
+          text: 'Tak', style: 'destructive', onPress: async () => {
+            try {
+              await deleteWallet(wallet.id);
+              Alert.alert('Sukces', 'Portfel został usunięty');
+            } catch (e: any) {
+              Alert.alert('Błąd', e.message);
+            }
           }
-        }},
+        },
       ]
     );
   };
 
   const handleInvite = async () => {
-    if (!inviteEmail.trim()) return Alert.alert('Błąd', 'Podaj email użytkownika');
+    const normalizedUsername = inviteUsername.trim().toLowerCase().replace(/^@/, '');
+    if (!normalizedUsername) return Alert.alert('Błąd', 'Podaj nazwę użytkownika');
+    if (!/^[a-z0-9._]{3,30}$/.test(normalizedUsername)) {
+      return Alert.alert('Błąd', 'Nazwa użytkownika musi mieć 3-30 znaków: litery, cyfry, kropka lub podkreślenie');
+    }
     if (!selectedWallet) return;
+    if (normalizedUsername === (user?.username || '').toLowerCase()) {
+      return Alert.alert('Błąd', 'Nie możesz zaprosić samego siebie');
+    }
 
     setInviting(true);
     try {
-      await inviteToWallet(selectedWallet.id, inviteEmail.trim());
-      setInviteEmail('');
-      Alert.alert('Sukces! 🎉', 'Zaproszenie zostało wysłane');
+      await inviteToWallet(selectedWallet.id, normalizedUsername);
+      setInviteUsername('');
+      Alert.alert('Sukces! 🎉', `Zaproszenie wysłane do @${normalizedUsername}. Użytkownik musi je zaakceptować.`);
       await loadData();
     } catch (e: any) {
       Alert.alert('Błąd', e.message);
@@ -99,82 +146,148 @@ export default function Wallets() {
 
   const handleRemoveMember = async (memberId: string, memberEmail: string) => {
     if (!selectedWallet) return;
-    
+
     Alert.alert(
       'Usuń członka',
       `Usunąć ${memberEmail} z portfela?`,
       [
         { text: 'Nie', style: 'cancel' },
-        { text: 'Tak', style: 'destructive', onPress: async () => {
-          try {
-            await removeFromWallet(selectedWallet.id, memberId);
-            Alert.alert('Sukces', 'Członek został usunięty');
-            await loadData();
-            // Refresh selected wallet data
-            const updated = wallets.find(w => w.id === selectedWallet.id);
-            if (updated) setSelectedWallet(updated);
-          } catch (e: any) {
-            Alert.alert('Błąd', e.message);
+        {
+          text: 'Tak', style: 'destructive', onPress: async () => {
+            try {
+              await removeFromWallet(selectedWallet.id, memberId);
+              Alert.alert('Sukces', 'Członek został usunięty');
+              await loadData();
+              const updated = useStore.getState().wallets.find((w: any) => w.id === selectedWallet.id);
+              if (updated) {
+                setSelectedWallet(updated);
+              }
+            } catch (e: any) {
+              Alert.alert('Błąd', e.message);
+            }
           }
-        }},
+        },
       ]
     );
   };
 
+  const handleLeaveWallet = () => {
+    if (!selectedWallet || selectedWallet.owner_id === user?.id) return;
+    Alert.alert(
+      'Opuścić portfel?',
+      `Czy na pewno chcesz opuścić "${selectedWallet.name}"?`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Opuść',
+          style: 'destructive',
+          onPress: async () => {
+            setLeaving(true);
+            try {
+              await leaveWallet(selectedWallet.id);
+              setShowManageModal(false);
+              setSelectedWallet(null);
+              setInviteUsername('');
+              Alert.alert('Gotowe', 'Opuściłeś wspólny portfel');
+              await loadData();
+            } catch (e: any) {
+              Alert.alert('Błąd', e?.message || 'Nie udało się opuścić portfela');
+            } finally {
+              setLeaving(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const openManageModal = (wallet: any) => {
-    setSelectedWallet(wallet);
+    const latestWallet = wallets.find((w: Wallet) => w.id === wallet.id) || wallet;
+    setSelectedWallet(latestWallet);
     setShowManageModal(true);
   };
 
-  const personalWallets = wallets.filter(w => !w.is_shared);
-  const sharedWallets = wallets.filter(w => w.is_shared);
+  const handleAcceptInvitation = async (invitationId: string) => {
+    try {
+      await acceptWalletInvitation(invitationId);
+      Alert.alert('Sukces', 'Dołączyłeś do wspólnego portfela');
+    } catch (error: any) {
+      Alert.alert('Błąd', error?.message || 'Nie udało się zaakceptować zaproszenia');
+    }
+  };
 
-  const totalBalance = wallets.reduce((acc, w) => acc + w.balance, 0);
-  const personalBalance = personalWallets.reduce((acc, w) => acc + w.balance, 0);
-  const sharedBalance = sharedWallets.reduce((acc, w) => acc + w.balance, 0);
+  const handleRejectInvitation = async (invitationId: string) => {
+    try {
+      await rejectWalletInvitation(invitationId);
+      Alert.alert('Gotowe', 'Zaproszenie zostało odrzucone');
+    } catch (error: any) {
+      Alert.alert('Błąd', error?.message || 'Nie udało się odrzucić zaproszenia');
+    }
+  };
 
-  const renderWalletCard = (wallet: any, isSharedSection: boolean) => (
-    <TouchableOpacity
-      key={wallet.id}
-      style={styles.walletCard}
-      onPress={() => isSharedSection ? openManageModal(wallet) : null}
-      onLongPress={() => handleDeleteWallet(wallet)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.walletCardContent}>
-        <View style={[styles.walletIcon, isSharedSection && styles.walletIconShared]}>
-          <Text style={styles.walletEmoji}>{wallet.emoji}</Text>
-        </View>
-        <View style={styles.walletInfo}>
-          <Text style={styles.walletName} numberOfLines={1}>{wallet.name}</Text>
-          <View style={styles.walletMeta}>
-            {wallet.is_shared && (
-              <View style={styles.sharedBadge}>
-                <Ionicons name="people" size={12} color={Colors.shared} />
-                <Text style={styles.sharedBadgeText}>Wspólny</Text>
-              </View>
-            )}
-            {wallet.owner_id === user?.id && wallet.is_shared && (
-              <View style={styles.ownerBadge}>
-                <Text style={styles.ownerBadgeText}>Właściciel</Text>
-              </View>
+  const personalWallets = wallets.filter((w: Wallet) => !w.is_shared);
+  const sharedWallets = wallets.filter((w: Wallet) => w.is_shared);
+
+  const totalBalance = wallets.reduce((acc: number, w: Wallet) => acc + w.balance, 0);
+  const personalBalance = personalWallets.reduce((acc: number, w: Wallet) => acc + w.balance, 0);
+  const sharedBalance = sharedWallets.reduce((acc: number, w: Wallet) => acc + w.balance, 0);
+
+  const renderWalletCard = (wallet: any, isSharedSection: boolean, index: number = 0) => (
+    <AnimatedCard key={wallet.id} entrance="slideLeft" delay={100 + index * 40}>
+      <TouchableOpacity
+        style={[styles.walletCard, activeWallet?.id === wallet.id && styles.walletCardActive]}
+        onPress={() => {
+          setActiveWallet(wallet);
+          if (isSharedSection) {
+            openManageModal(wallet);
+          }
+        }}
+        onLongPress={() => handleDeleteWallet(wallet)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.walletCardContent}>
+          <View style={[styles.walletIcon, isSharedSection && styles.walletIconShared]}>
+            <Text style={styles.walletEmoji}>{wallet.emoji}</Text>
+          </View>
+          <View style={styles.walletInfo}>
+            <Text style={styles.walletName} numberOfLines={1}>{wallet.name}</Text>
+            <View style={styles.walletMeta}>
+              {wallet.is_shared && (
+                <View style={styles.sharedBadge}>
+                  <Ionicons name="people" size={12} color={colors.shared} />
+                  <Text style={styles.sharedBadgeText}>Wspólny</Text>
+                </View>
+              )}
+              {wallet.owner_id === user?.id && wallet.is_shared && (
+                <View style={styles.ownerBadge}>
+                  <Text style={styles.ownerBadgeText}>Właściciel</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View style={styles.walletBalance}>
+            <Text style={[styles.walletBalanceAmount, wallet.balance < 0 && styles.negativeBalance]}>
+              {formatMoney(wallet.balance)}
+            </Text>
+            {isSharedSection && (
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
             )}
           </View>
         </View>
-        <View style={styles.walletBalance}>
-          <Text style={[styles.walletBalanceAmount, wallet.balance < 0 && styles.negativeBalance]}>
-            {formatMoney(wallet.balance)}
-          </Text>
-          {isSharedSection && (
-            <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </AnimatedCard>
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {/* Wallpaper Background */}
+      {settings.wallpaper && (
+        <Image
+          source={{ uri: settings.wallpaper.uri }}
+          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
+          blurRadius={settings.wallpaper.blur}
+        />
+      )}
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -183,47 +296,87 @@ export default function Wallets() {
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreateModal(true)}>
           <LinearGradient colors={Gradients.primary} style={styles.addBtnGradient}>
-            <Ionicons name="add" size={24} color={Colors.white} />
+            <Ionicons name="add" size={24} color={colors.white} />
           </LinearGradient>
         </TouchableOpacity>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         contentContainerStyle={styles.scrollContent}
       >
         {/* Summary Cards */}
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, styles.summaryCardPrimary]}>
-            <Text style={styles.summaryLabel}>Łącznie</Text>
-            <Text style={styles.summaryAmount}>{formatMoney(totalBalance)}</Text>
+        <AnimatedCard entrance="slideRight" delay={50}>
+          <View style={styles.summaryRow}>
+            <View style={[styles.summaryCard, styles.summaryCardPrimary]}>
+              <Text style={styles.summaryLabel}>Łącznie</Text>
+              <Text style={styles.summaryAmount}>{formatMoney(totalBalance)}</Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <Ionicons name="person" size={20} color={Colors.primary} />
-            <Text style={styles.summaryLabelSmall}>Osobiste</Text>
-            <Text style={styles.summaryAmountSmall}>{formatMoney(personalBalance)}</Text>
+        </AnimatedCard>
+        <AnimatedCard entrance="slideRight" delay={150}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCard}>
+              <Ionicons name="person" size={20} color={colors.primary} />
+              <Text style={styles.summaryLabelSmall}>Osobiste</Text>
+              <Text style={styles.summaryAmountSmall}>{formatMoney(personalBalance)}</Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Ionicons name="people" size={20} color={colors.shared} />
+              <Text style={styles.summaryLabelSmall}>Wspólne</Text>
+              <Text style={styles.summaryAmountSmall}>{formatMoney(sharedBalance)}</Text>
+            </View>
           </View>
-          <View style={styles.summaryCard}>
-            <Ionicons name="people" size={20} color={Colors.shared} />
-            <Text style={styles.summaryLabelSmall}>Wspólne</Text>
-            <Text style={styles.summaryAmountSmall}>{formatMoney(sharedBalance)}</Text>
+        </AnimatedCard>
+
+        {/* Incoming Invitations */}
+        {walletInvitations.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="mail-unread" size={20} color={colors.warning} />
+                <Text style={styles.sectionTitle}>Zaproszenia do portfeli</Text>
+              </View>
+              <Text style={styles.sectionCount}>{walletInvitations.length}</Text>
+            </View>
+            {walletInvitations.map((invitation: any) => (
+              <View key={invitation.id} style={styles.inviteCard}>
+                <View style={styles.inviteTop}>
+                  <View style={styles.inviteWalletIcon}>
+                    <Text style={styles.inviteWalletEmoji}>{invitation.wallet?.emoji || '💼'}</Text>
+                  </View>
+                  <View style={styles.inviteInfo}>
+                    <Text style={styles.inviteWalletName}>{invitation.wallet?.name || 'Wspólny portfel'}</Text>
+                    <Text style={styles.inviteMeta}>
+                      Zaprasza: @{invitation.inviter?.username || invitation.inviter?.name || 'użytkownik'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.inviteActions}>
+                  <TouchableOpacity style={styles.inviteRejectBtn} onPress={() => handleRejectInvitation(invitation.id)}>
+                    <Text style={styles.inviteRejectText}>Odrzuć</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.inviteAcceptBtn} onPress={() => handleAcceptInvitation(invitation.id)}>
+                    <Text style={styles.inviteAcceptText}>Akceptuj</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
-        </View>
+        )}
 
         {/* Personal Wallets */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="person" size={20} color={Colors.primary} />
+              <Ionicons name="person" size={20} color={colors.primary} />
               <Text style={styles.sectionTitle}>Osobiste portfele</Text>
             </View>
             <Text style={styles.sectionCount}>{personalWallets.length}</Text>
           </View>
           {personalWallets.length > 0 ? (
-            personalWallets.map(wallet => renderWalletCard(wallet, false))
+            personalWallets.map((wallet: any, index: number) => renderWalletCard(wallet, false, index))
           ) : (
             <View style={styles.emptySection}>
               <Text style={styles.emptySectionText}>Brak osobistych portfeli</Text>
@@ -235,22 +388,22 @@ export default function Wallets() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="people" size={20} color={Colors.shared} />
+              <Ionicons name="people" size={20} color={colors.shared} />
               <Text style={styles.sectionTitle}>Wspólne portfele</Text>
             </View>
             <Text style={styles.sectionCount}>{sharedWallets.length}</Text>
           </View>
           {sharedWallets.length > 0 ? (
-            sharedWallets.map(wallet => renderWalletCard(wallet, true))
+            sharedWallets.map((wallet: any, index: number) => renderWalletCard(wallet, true, index))
           ) : (
             <View style={styles.emptySection}>
               <View style={styles.emptyIcon}>
-                <Ionicons name="people-outline" size={32} color={Colors.textMuted} />
+                <Ionicons name="people-outline" size={32} color={colors.textMuted} />
               </View>
               <Text style={styles.emptySectionText}>Brak wspólnych portfeli</Text>
               <Text style={styles.emptySectionSubtext}>Utwórz wspólny portfel, aby dzielić wydatki z innymi</Text>
-              <TouchableOpacity 
-                style={styles.createSharedBtn} 
+              <TouchableOpacity
+                style={styles.createSharedBtn}
                 onPress={() => { setIsShared(true); setShowCreateModal(true); }}
               >
                 <Text style={styles.createSharedBtnText}>Utwórz wspólny portfel</Text>
@@ -269,7 +422,7 @@ export default function Wallets() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nowy portfel</Text>
               <TouchableOpacity onPress={() => { setShowCreateModal(false); setIsShared(false); }}>
-                <Ionicons name="close" size={24} color={Colors.text} />
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -279,7 +432,7 @@ export default function Wallets() {
               value={walletName}
               onChangeText={setWalletName}
               placeholder="Np. Oszczędności"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
             />
 
             <Text style={styles.modalLabel}>Wybierz emoji</Text>
@@ -301,21 +454,21 @@ export default function Wallets() {
                 style={[styles.typeOption, !isShared && styles.typeOptionActive]}
                 onPress={() => setIsShared(false)}
               >
-                <Ionicons name="person" size={20} color={!isShared ? Colors.white : Colors.text} />
+                <Ionicons name="person" size={20} color={!isShared ? colors.white : colors.text} />
                 <Text style={[styles.typeOptionText, !isShared && styles.typeOptionTextActive]}>Osobisty</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.typeOption, styles.typeOptionShared, isShared && styles.typeOptionSharedActive]}
                 onPress={() => setIsShared(true)}
               >
-                <Ionicons name="people" size={20} color={isShared ? Colors.white : Colors.shared} />
+                <Ionicons name="people" size={20} color={isShared ? colors.white : colors.shared} />
                 <Text style={[styles.typeOptionText, styles.typeOptionTextShared, isShared && styles.typeOptionTextActive]}>Wspólny</Text>
               </TouchableOpacity>
             </View>
 
             {isShared && (
               <View style={styles.sharedInfo}>
-                <Ionicons name="information-circle" size={20} color={Colors.shared} />
+                <Ionicons name="information-circle" size={20} color={colors.shared} />
                 <Text style={styles.sharedInfoText}>
                   Wspólny portfel pozwala dzielić wydatki z innymi użytkownikami. Po utworzeniu możesz zaprosić innych.
                 </Text>
@@ -340,8 +493,8 @@ export default function Wallets() {
                 <Text style={styles.modalWalletEmoji}>{selectedWallet?.emoji}</Text>
                 <Text style={styles.modalTitle}>{selectedWallet?.name}</Text>
               </View>
-              <TouchableOpacity onPress={() => { setShowManageModal(false); setSelectedWallet(null); setInviteEmail(''); }}>
-                <Ionicons name="close" size={24} color={Colors.text} />
+              <TouchableOpacity onPress={() => { setShowManageModal(false); setSelectedWallet(null); setInviteUsername(''); }}>
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -356,17 +509,30 @@ export default function Wallets() {
               </View>
             </View>
 
+            {/* Work Calculator Button for Shared Wallet */}
+            <TouchableOpacity
+              style={styles.calculatorBtn}
+              onPress={() => {
+                setShowManageModal(false);
+                setShowCalculator(true);
+              }}
+            >
+              <LinearGradient colors={Gradients.blue} style={styles.calculatorBtnGradient}>
+                <Ionicons name="calculator" size={20} color={colors.white} />
+                <Text style={styles.calculatorBtnText}>Kalkulator pracy</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
             {selectedWallet?.owner_id === user?.id && (
               <>
                 <Text style={styles.modalLabel}>Zaproś użytkownika</Text>
                 <View style={styles.inviteRow}>
                   <TextInput
                     style={styles.inviteInput}
-                    value={inviteEmail}
-                    onChangeText={setInviteEmail}
-                    placeholder="Email użytkownika"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="email-address"
+                    value={inviteUsername}
+                    onChangeText={setInviteUsername}
+                    placeholder="Nazwa użytkownika, np. adam_nowak"
+                    placeholderTextColor={colors.textMuted}
                     autoCapitalize="none"
                   />
                   <TouchableOpacity style={styles.inviteBtn} onPress={handleInvite} disabled={inviting}>
@@ -374,7 +540,7 @@ export default function Wallets() {
                       {inviting ? (
                         <Text style={styles.inviteBtnText}>...</Text>
                       ) : (
-                        <Ionicons name="person-add" size={20} color={Colors.white} />
+                        <Ionicons name="person-add" size={20} color={colors.white} />
                       )}
                     </LinearGradient>
                   </TouchableOpacity>
@@ -386,21 +552,27 @@ export default function Wallets() {
             <View style={styles.membersList}>
               {/* Owner */}
               <View style={styles.memberItem}>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberAvatarText}>
-                    {selectedWallet?.owner_id === user?.id ? user?.name?.charAt(0) : '?'}
-                  </Text>
-                </View>
-                <View style={styles.memberInfo}>
-                  <Text style={styles.memberName}>
-                    {selectedWallet?.owner_id === user?.id ? user?.name : 'Właściciel'}
-                  </Text>
-                  <Text style={styles.memberEmail}>
-                    {selectedWallet?.owner_id === user?.id ? user?.email : ''}
-                  </Text>
-                </View>
-                <View style={styles.ownerTag}>
-                  <Text style={styles.ownerTagText}>Właściciel</Text>
+              <View style={styles.memberAvatar}>
+                <Text style={styles.memberAvatarText}>
+                    {selectedWallet?.owner_id === user?.id
+                      ? (user?.name?.charAt(0) || '?')
+                      : (selectedWallet?.owner_details?.name?.charAt(0) || '?')}
+                </Text>
+              </View>
+              <View style={styles.memberInfo}>
+                <Text style={styles.memberName}>
+                    {selectedWallet?.owner_id === user?.id
+                      ? user?.name
+                      : (selectedWallet?.owner_details?.name || 'Właściciel')}
+                </Text>
+                <Text style={styles.memberEmail}>
+                    {selectedWallet?.owner_id === user?.id
+                      ? user?.email
+                      : (selectedWallet?.owner_details?.email || '')}
+                </Text>
+              </View>
+              <View style={styles.ownerTag}>
+                <Text style={styles.ownerTagText}>Właściciel</Text>
                 </View>
               </View>
 
@@ -415,11 +587,11 @@ export default function Wallets() {
                     <Text style={styles.memberEmail}>{member.email}</Text>
                   </View>
                   {selectedWallet?.owner_id === user?.id && (
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.removeMemberBtn}
                       onPress={() => handleRemoveMember(member.id, member.email)}
                     >
-                      <Ionicons name="close-circle" size={24} color={Colors.expense} />
+                      <Ionicons name="close-circle" size={24} color={colors.expense} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -433,117 +605,232 @@ export default function Wallets() {
             </View>
 
             {selectedWallet?.owner_id === user?.id && (
-              <TouchableOpacity 
-                style={styles.deleteWalletBtn} 
+              <TouchableOpacity
+                style={styles.deleteWalletBtn}
                 onPress={() => { setShowManageModal(false); handleDeleteWallet(selectedWallet); }}
               >
-                <Ionicons name="trash-outline" size={20} color={Colors.expense} />
+                <Ionicons name="trash-outline" size={20} color={colors.expense} />
                 <Text style={styles.deleteWalletBtnText}>Usuń portfel</Text>
+              </TouchableOpacity>
+            )}
+
+            {selectedWallet?.owner_id !== user?.id && (
+              <TouchableOpacity
+                style={[styles.deleteWalletBtn, styles.leaveWalletBtn]}
+                onPress={handleLeaveWallet}
+                disabled={leaving}
+              >
+                <Ionicons name="exit-outline" size={20} color={colors.warning} />
+                <Text style={styles.leaveWalletBtnText}>
+                  {leaving ? 'Opuszczanie...' : 'Opuść portfel'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
       </Modal>
+
+      {/* Work Calculator Modal */}
+      <WorkCalculatorModal
+        visible={showCalculator}
+        onClose={() => setShowCalculator(false)}
+        wageSettings={wageSettings}
+        onOpenSettings={() => {
+          setShowCalculator(false);
+          setShowWageSettings(true);
+        }}
+        calculateWorkTime={calculateWorkTime}
+        sharedWalletMembers={selectedWallet?.members_details?.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          wageSettings: null, // TODO: Load member wage settings
+        }))}
+      />
+
+      {/* Wage Settings Modal */}
+      <WageSettingsModal
+        visible={showWageSettings}
+        onClose={() => setShowWageSettings(false)}
+        onSave={async (settings) => {
+          await saveWageSettings(settings);
+          setShowWageSettings(false);
+          setShowCalculator(true);
+        }}
+        initialSettings={wageSettings}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: Spacing.xl, 
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  wallpaper: { ...StyleSheet.absoluteFillObject },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
   },
-  title: { fontSize: 28, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
-  addBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', ...Shadows.medium },
+  title: { ...Typography.h1, color: colors.text },
+  subtitle: { ...Typography.caption, color: colors.textLight, marginTop: 4 },
+  addBtn: { borderRadius: BorderRadius.lg, overflow: 'hidden', ...Shadows.medium },
   addBtnGradient: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingHorizontal: Spacing.xl },
-  summaryRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.md },
-  summaryCard: { 
-    flex: 1, 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    padding: Spacing.lg,
+
+  summaryRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
     alignItems: 'center',
     ...Shadows.small,
   },
   summaryCardPrimary: {
     backgroundColor: Colors.primary,
+    ...Shadows.medium,
   },
-  summaryLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
-  summaryAmount: { fontSize: 28, fontWeight: '800', color: Colors.white, marginTop: 4 },
-  summaryLabelSmall: { fontSize: 12, color: Colors.textLight, marginTop: Spacing.sm },
-  summaryAmountSmall: { fontSize: 18, fontWeight: '700', color: Colors.text, marginTop: 4 },
-  section: { marginTop: Spacing.xxl },
-  sectionHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
+  summaryLabel: { ...Typography.small, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
+  summaryAmount: { ...Typography.h2, color: colors.white, marginTop: 4 },
+  summaryLabelSmall: { ...Typography.small, color: colors.textLight, marginTop: Spacing.sm },
+  summaryAmountSmall: { ...Typography.bodyBold, color: colors.text, marginTop: 2 },
+
+  section: { marginTop: Spacing.xl, marginBottom: Spacing.lg },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: Spacing.md,
   },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
-  sectionCount: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: Colors.textMuted,
-    backgroundColor: Colors.backgroundDark,
-    paddingHorizontal: Spacing.sm,
+  sectionTitle: { ...Typography.h3, color: colors.text },
+  sectionCount: {
+    ...Typography.small,
+    color: colors.textMuted,
+    backgroundColor: colors.backgroundDark,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: BorderRadius.full,
+    borderRadius: BorderRadius.pill,
   },
-  walletCard: { 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
+  inviteCard: {
+    backgroundColor: colors.card,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
     marginBottom: Spacing.md,
     ...Shadows.small,
   },
-  walletCardContent: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  inviteTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  inviteWalletIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.md,
+    backgroundColor: colors.warning + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteWalletEmoji: {
+    fontSize: 20,
+  },
+  inviteInfo: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  inviteWalletName: {
+    ...Typography.bodyBold,
+    color: colors.text,
+  },
+  inviteMeta: {
+    ...Typography.caption,
+    color: colors.textLight,
+    marginTop: 2,
+  },
+  inviteActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  inviteRejectBtn: {
+    flex: 1,
+    backgroundColor: colors.expenseLight,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  inviteRejectText: {
+    ...Typography.bodyBold,
+    color: colors.expense,
+  },
+  inviteAcceptBtn: {
+    flex: 1,
+    backgroundColor: colors.income,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  inviteAcceptText: {
+    ...Typography.bodyBold,
+    color: colors.white,
+  },
+
+  walletCard: {
+    backgroundColor: colors.card,
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.md,
+    ...Shadows.small,
+  },
+  walletCardActive: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  walletCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: Spacing.lg,
   },
-  walletIcon: { 
-    width: 52, 
-    height: 52, 
-    borderRadius: BorderRadius.lg, 
-    backgroundColor: Colors.primary + '15', 
-    justifyContent: 'center', 
+  walletIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.incomeLight,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   walletIconShared: { backgroundColor: Colors.sharedLight },
   walletEmoji: { fontSize: 24 },
-  walletInfo: { flex: 1, marginLeft: Spacing.md },
-  walletName: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  walletInfo: { flex: 1, marginLeft: Spacing.lg },
+  walletName: { ...Typography.bodyBold, color: colors.text },
   walletMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 4 },
-  sharedBadge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  sharedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
     backgroundColor: Colors.sharedLight,
-    paddingHorizontal: Spacing.sm,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: BorderRadius.full,
+    borderRadius: BorderRadius.pill,
   },
-  sharedBadgeText: { fontSize: 11, color: Colors.shared, fontWeight: '600' },
+  sharedBadgeText: { fontSize: 10, color: Colors.shared, fontWeight: '700' },
   ownerBadge: {
-    backgroundColor: Colors.primary + '15',
-    paddingHorizontal: Spacing.sm,
+    backgroundColor: Colors.incomeLight,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: BorderRadius.full,
+    borderRadius: BorderRadius.pill,
   },
-  ownerBadgeText: { fontSize: 11, color: Colors.primary, fontWeight: '600' },
+  ownerBadgeText: { fontSize: 10, color: Colors.income, fontWeight: '700' },
   walletBalance: { alignItems: 'flex-end', flexDirection: 'row', gap: Spacing.sm },
-  walletBalanceAmount: { fontSize: 18, fontWeight: '700', color: Colors.text },
-  negativeBalance: { color: Colors.expense },
-  emptySection: { 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    padding: Spacing.xxl,
+  walletBalanceAmount: { ...Typography.bodyBold, fontSize: 18, color: colors.text },
+  negativeBalance: { color: Colors.error },
+
+  emptySection: {
+    backgroundColor: colors.card,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xxxxl,
     alignItems: 'center',
     ...Shadows.small,
   },
@@ -551,150 +838,150 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.backgroundDark,
+    backgroundColor: colors.backgroundDark,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.lg,
   },
-  emptySectionText: { fontSize: 16, fontWeight: '600', color: Colors.text },
-  emptySectionSubtext: { fontSize: 14, color: Colors.textMuted, marginTop: 4, textAlign: 'center' },
+  emptySectionText: { ...Typography.bodyBold, color: colors.text },
+  emptySectionSubtext: { ...Typography.caption, color: colors.textMuted, marginTop: 4, textAlign: 'center' },
   createSharedBtn: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.xl,
     backgroundColor: Colors.sharedLight,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.full,
+    borderRadius: BorderRadius.pill,
   },
-  createSharedBtnText: { fontSize: 14, fontWeight: '600', color: Colors.shared },
-  
+  createSharedBtnText: { fontSize: 14, fontWeight: '700', color: Colors.shared },
+
   // Modal styles
-  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  modalContent: { 
-    backgroundColor: Colors.card, 
-    borderTopLeftRadius: BorderRadius.xxl, 
-    borderTopRightRadius: BorderRadius.xxl, 
-    padding: Spacing.xxl, 
+  modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    padding: Spacing.xl,
     maxHeight: '85%',
+    ...Shadows.large,
   },
-  modalHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: Spacing.xl,
   },
   modalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   modalWalletEmoji: { fontSize: 28 },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
-  modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg },
-  modalInput: { 
-    backgroundColor: Colors.background, 
-    borderRadius: BorderRadius.md, 
-    paddingHorizontal: Spacing.lg, 
-    height: 52, 
-    fontSize: 16, 
-    color: Colors.text,
+  modalTitle: { ...Typography.h2, color: colors.text },
+  modalLabel: { ...Typography.small, color: colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg },
+  modalInput: {
+    backgroundColor: colors.background,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    height: 52,
+    ...Typography.body,
+    color: colors.text,
   },
   emojiScroll: { marginBottom: Spacing.sm },
-  emojiBtn: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: BorderRadius.md, 
-    backgroundColor: Colors.background, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  emojiBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: Spacing.sm,
   },
   emojiBtnSelected: { backgroundColor: Colors.primary + '20', borderWidth: 2, borderColor: Colors.primary },
   emojiBtnText: { fontSize: 24 },
   typeToggle: { flexDirection: 'row', gap: Spacing.md },
-  typeOption: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  typeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.background, 
-    paddingVertical: Spacing.lg, 
+    backgroundColor: colors.background,
+    paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.md,
   },
   typeOptionActive: { backgroundColor: Colors.primary },
   typeOptionShared: {},
   typeOptionSharedActive: { backgroundColor: Colors.shared },
-  typeOptionText: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  typeOptionText: { ...Typography.bodyBold, fontSize: 15, color: colors.text },
   typeOptionTextShared: { color: Colors.shared },
-  typeOptionTextActive: { color: Colors.white },
-  sharedInfo: { 
-    flexDirection: 'row', 
-    alignItems: 'flex-start', 
-    gap: Spacing.sm, 
-    backgroundColor: Colors.sharedLight, 
-    padding: Spacing.md, 
+  typeOptionTextActive: { color: colors.white },
+  sharedInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    backgroundColor: Colors.sharedLight,
+    padding: Spacing.md,
     borderRadius: BorderRadius.md,
     marginTop: Spacing.md,
   },
   sharedInfoText: { flex: 1, fontSize: 13, color: Colors.shared, lineHeight: 18 },
   modalSubmitBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', marginTop: Spacing.xl },
-  modalSubmitGradient: { height: 52, justifyContent: 'center', alignItems: 'center' },
-  modalSubmitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
-  
-  // Manage modal
+  modalSubmitGradient: { height: 56, justifyContent: 'center', alignItems: 'center' },
+  modalSubmitText: { ...Typography.bodyBold, color: colors.white },
+
   walletStats: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.md },
-  walletStatItem: { 
-    flex: 1, 
-    backgroundColor: Colors.background, 
-    padding: Spacing.lg, 
+  walletStatItem: {
+    flex: 1,
+    backgroundColor: colors.background,
+    padding: Spacing.lg,
     borderRadius: BorderRadius.md,
     alignItems: 'center',
   },
-  walletStatLabel: { fontSize: 12, color: Colors.textLight },
-  walletStatValue: { fontSize: 20, fontWeight: '700', color: Colors.text, marginTop: 4 },
+  walletStatLabel: { ...Typography.small, color: colors.textLight },
+  walletStatValue: { ...Typography.h3, color: colors.text, marginTop: 4 },
   inviteRow: { flexDirection: 'row', gap: Spacing.sm },
-  inviteInput: { 
-    flex: 1, 
-    backgroundColor: Colors.background, 
-    borderRadius: BorderRadius.md, 
-    paddingHorizontal: Spacing.lg, 
-    height: 52, 
-    fontSize: 16, 
-    color: Colors.text,
+  inviteInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    height: 52,
+    ...Typography.body,
+    color: colors.text,
   },
   inviteBtn: { borderRadius: BorderRadius.md, overflow: 'hidden' },
   inviteBtnGradient: { width: 52, height: 52, justifyContent: 'center', alignItems: 'center' },
-  inviteBtnText: { fontSize: 16, color: Colors.white },
-  membersList: { backgroundColor: Colors.background, borderRadius: BorderRadius.md, overflow: 'hidden' },
-  memberItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  inviteBtnText: { fontSize: 16, color: colors.white },
+  membersList: { backgroundColor: colors.background, borderRadius: BorderRadius.md, overflow: 'hidden' },
+  memberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
+    borderBottomColor: colors.borderLight,
   },
-  memberAvatar: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: BorderRadius.full, 
-    backgroundColor: Colors.primary, 
-    justifyContent: 'center', 
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   memberAvatarSecondary: { backgroundColor: Colors.shared },
-  memberAvatarText: { fontSize: 18, fontWeight: '700', color: Colors.white },
+  memberAvatarText: { fontSize: 18, fontWeight: '700', color: colors.white },
   memberInfo: { flex: 1, marginLeft: Spacing.md },
-  memberName: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  memberEmail: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
-  ownerTag: { 
-    backgroundColor: Colors.primary + '15', 
-    paddingHorizontal: Spacing.sm, 
-    paddingVertical: 4, 
-    borderRadius: BorderRadius.full,
+  memberName: { ...Typography.bodyBold, color: colors.text },
+  memberEmail: { ...Typography.caption, color: colors.textLight, marginTop: 2 },
+  ownerTag: {
+    backgroundColor: Colors.incomeLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.pill,
   },
-  ownerTagText: { fontSize: 11, fontWeight: '600', color: Colors.primary },
+  ownerTagText: { fontSize: 10, fontWeight: '700', color: Colors.income },
   removeMemberBtn: { padding: Spacing.xs },
   noMembers: { padding: Spacing.lg, alignItems: 'center' },
-  noMembersText: { fontSize: 14, color: Colors.textMuted },
-  deleteWalletBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  noMembersText: { ...Typography.caption, color: colors.textMuted },
+  deleteWalletBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
     marginTop: Spacing.xl,
@@ -702,5 +989,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.expenseLight,
     borderRadius: BorderRadius.md,
   },
-  deleteWalletBtnText: { fontSize: 15, fontWeight: '600', color: Colors.expense },
+  deleteWalletBtnText: { ...Typography.bodyBold, color: Colors.expense },
+  leaveWalletBtn: {
+    backgroundColor: colors.warning + '20',
+  },
+  leaveWalletBtnText: { ...Typography.bodyBold, color: colors.warning },
+  calculatorBtn: { borderRadius: BorderRadius.md, overflow: 'hidden', marginBottom: Spacing.md },
+  calculatorBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
+  calculatorBtnText: { ...Typography.bodyBold, color: colors.white },
 });

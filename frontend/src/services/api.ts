@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { supabase } from './supabase';
+
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 class Api {
@@ -87,21 +89,21 @@ class Api {
 
   // Joint Account / Shared Wallet Management
   async inviteToWallet(walletId: string, email: string) {
-    return this.fetch<any>(`/wallets/${walletId}/invite`, { 
-      method: 'POST', 
-      body: JSON.stringify({ email }) 
+    return this.fetch<any>(`/wallets/${walletId}/invite`, {
+      method: 'POST',
+      body: JSON.stringify({ email })
     });
   }
 
   async removeFromWallet(walletId: string, userId: string) {
-    return this.fetch<any>(`/wallets/${walletId}/members/${userId}`, { 
-      method: 'DELETE' 
+    return this.fetch<any>(`/wallets/${walletId}/members/${userId}`, {
+      method: 'DELETE'
     });
   }
 
   async leaveWallet(walletId: string) {
-    return this.fetch<any>(`/wallets/${walletId}/leave`, { 
-      method: 'POST' 
+    return this.fetch<any>(`/wallets/${walletId}/leave`, {
+      method: 'POST'
     });
   }
 
@@ -160,12 +162,72 @@ class Api {
   }
 
   // AI
-  async chat(message: string) {
-    return this.fetch<any>('/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+  async chat(message: string, timeoutMs: number = 25000) {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    try {
+      const invokePromise = supabase.functions.invoke('analyze-finances', {
+        body: { message },
+      });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Request timeout')), timeoutMs);
+      });
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
+
+      if (error) {
+        console.error('Edge Function Error:', error);
+        throw new Error(error.message);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Chat API Error:', error);
+      // Fallback for demo/offline is better handled in the UI or here
+      throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   }
 
   async getChatHistory(limit: number = 20) {
-    return this.fetch<any[]>(`/ai/history?limit=${limit}`);
+    const { data, error } = await supabase
+      .from('chat_history')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data;
+  }
+
+  async saveChatHistory(message: string, response: string) {
+    const normalizedMessage = message.trim();
+    const normalizedResponse = response.trim();
+
+    if (!normalizedMessage || !normalizedResponse) {
+      return;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { error } = await (supabase as any)
+      .from('chat_history')
+      .insert({
+        user_id: user.id,
+        message: normalizedMessage,
+        response: normalizedResponse,
+      });
+
+    if (error) throw error;
   }
 
   // User search (for inviting to wallets)

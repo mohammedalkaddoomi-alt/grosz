@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,48 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const listRef = useRef<FlatList>(null);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const listRef = useRef<FlatList<Message>>(null);
+
+  const scrollToBottom = () => {
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+  };
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const history = await api.getChatHistory(30);
+      const ordered = [...(history || [])].reverse();
+      const restoredMessages: Message[] = ordered.flatMap((item: any) => {
+        const items: Message[] = [];
+        if (item?.message?.trim()) {
+          items.push({
+            id: `${item.id}-user`,
+            role: 'user',
+            content: item.message,
+          });
+        }
+        if (item?.response?.trim()) {
+          items.push({
+            id: `${item.id}-assistant`,
+            role: 'assistant',
+            content: item.response,
+          });
+        }
+        return items;
+      });
+      setMessages(restoredMessages);
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    } finally {
+      setLoadingHistory(false);
+      scrollToBottom();
+    }
+  };
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -27,17 +68,43 @@ export default function Chat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    scrollToBottom();
 
     try {
       const res = await api.chat(userMsg.content);
-      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: res.response };
+      const aiContent = res.response || "Przepraszam, nie zrozumiałem pytania. Spróbuj jeszcze raz.";
+
+      const aiMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: aiContent
+      };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (e) {
-      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Przepraszam, wystąpił błąd. Spróbuj ponownie.' }]);
+      console.error(e);
+      const fallback = 'Asystent AI jest chwilowo niedostępny. Sprawdź połączenie i spróbuj ponownie za chwilę.';
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: fallback }]);
+      try {
+        await api.saveChatHistory(userMsg.content, fallback);
+      } catch (saveError) {
+        console.error('Failed to save fallback chat history:', saveError);
+      }
     } finally {
       setLoading(false);
-      setTimeout(() => listRef.current?.scrollToEnd(), 100);
+      scrollToBottom();
     }
+  };
+
+  const clearMessages = () => {
+    if (messages.length === 0) return;
+    Alert.alert(
+      'Wyczyścić czat?',
+      'Ta operacja usunie bieżący widok rozmowy.',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Wyczyść', style: 'destructive', onPress: () => setMessages([]) },
+      ],
+    );
   };
 
   const renderMessage = ({ item }: { item: Message }) => (
@@ -76,25 +143,34 @@ export default function Chat() {
             <Text style={styles.headerSubtitle}>Twój doradca finansowy</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.clearBtn} onPress={() => setMessages([])}>
+        <TouchableOpacity
+          style={[styles.clearBtn, messages.length === 0 && styles.clearBtnDisabled]}
+          onPress={clearMessages}
+          disabled={messages.length === 0}
+        >
           <Ionicons name="refresh" size={20} color={Colors.textMuted} />
         </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {messages.length === 0 ? (
+        {loadingHistory ? (
+          <View style={styles.loadingHistory}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingHistoryText}>Ładowanie rozmów...</Text>
+          </View>
+        ) : messages.length === 0 ? (
           <View style={styles.welcome}>
             <LinearGradient colors={Gradients.primary} style={styles.welcomeIcon}>
               <Ionicons name="sparkles" size={40} color={Colors.white} />
             </LinearGradient>
             <Text style={styles.welcomeTitle}>Cześć! 👋</Text>
             <Text style={styles.welcomeText}>Jestem Cenny Grosz - Twój osobisty asystent finansowy. Zapytaj mnie o porady, analizę wydatków lub pomoc w planowaniu budżetu.</Text>
-            
+
             <View style={styles.suggestions}>
               {suggestions.map((s, i) => (
-                <TouchableOpacity 
-                  key={i} 
-                  style={styles.suggestionBtn} 
+                <TouchableOpacity
+                  key={i}
+                  style={styles.suggestionBtn}
                   onPress={() => setInput(s.text)}
                   activeOpacity={0.7}
                 >
@@ -137,13 +213,13 @@ export default function Chat() {
               multiline
               maxLength={500}
             />
-            <TouchableOpacity 
-              style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]} 
-              onPress={sendMessage} 
+            <TouchableOpacity
+              style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
+              onPress={sendMessage}
               disabled={!input.trim() || loading}
             >
-              <LinearGradient 
-                colors={input.trim() && !loading ? Gradients.primary : [Colors.border, Colors.border]} 
+              <LinearGradient
+                colors={input.trim() && !loading ? Gradients.primary : [Colors.border, Colors.border]}
                 style={styles.sendGradient}
               >
                 <Ionicons name="send" size={18} color={Colors.white} />
@@ -158,67 +234,80 @@ export default function Chat() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: Spacing.xl, 
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
     backgroundColor: Colors.card,
   },
-  backBtn: { 
-    width: 40, 
-    height: 40, 
-    justifyContent: 'center', 
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: Colors.background,
     borderRadius: BorderRadius.md,
   },
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: Spacing.md },
-  headerIcon: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: BorderRadius.md, 
-    justifyContent: 'center', 
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center',
     alignItems: 'center',
     marginRight: Spacing.md,
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
   headerSubtitle: { fontSize: 12, color: Colors.textLight, marginTop: 1 },
-  clearBtn: { 
-    width: 40, 
-    height: 40, 
-    justifyContent: 'center', 
+  clearBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
   },
+  clearBtnDisabled: {
+    opacity: 0.4,
+  },
+  loadingHistory: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  loadingHistoryText: {
+    fontSize: 14,
+    color: Colors.textLight,
+  },
   welcome: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xxl },
-  welcomeIcon: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: BorderRadius.xl, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  welcomeIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: BorderRadius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: Spacing.lg,
     ...Shadows.medium,
   },
   welcomeTitle: { fontSize: 28, fontWeight: '700', color: Colors.text },
-  welcomeText: { 
-    fontSize: 15, 
-    color: Colors.textLight, 
-    marginTop: Spacing.sm, 
-    marginBottom: Spacing.xxl, 
+  welcomeText: {
+    fontSize: 15,
+    color: Colors.textLight,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xxl,
     textAlign: 'center',
     lineHeight: 22,
     paddingHorizontal: Spacing.lg,
   },
   suggestions: { gap: Spacing.sm, width: '100%' },
-  suggestionBtn: { 
+  suggestionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.card, 
-    paddingVertical: Spacing.lg, 
-    paddingHorizontal: Spacing.lg, 
+    backgroundColor: Colors.card,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.lg,
     gap: Spacing.md,
     ...Shadows.small,
@@ -228,40 +317,40 @@ const styles = StyleSheet.create({
   msgList: { padding: Spacing.xl, paddingBottom: Spacing.md },
   msgRow: { flexDirection: 'row', marginBottom: Spacing.md, alignItems: 'flex-end' },
   msgRowUser: { justifyContent: 'flex-end' },
-  avatar: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: Spacing.sm,
     ...Shadows.small,
   },
   msgBubble: { maxWidth: '75%', padding: Spacing.lg, borderRadius: BorderRadius.xl },
-  userBubble: { 
-    backgroundColor: Colors.primary, 
+  userBubble: {
+    backgroundColor: Colors.primary,
     borderBottomRightRadius: 4,
     ...Shadows.small,
   },
-  aiBubble: { 
-    backgroundColor: Colors.card, 
+  aiBubble: {
+    backgroundColor: Colors.card,
     borderBottomLeftRadius: 4,
     ...Shadows.small,
   },
   msgText: { fontSize: 15, color: Colors.text, lineHeight: 22 },
   userText: { color: Colors.white },
-  typing: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: Spacing.xl, 
-    paddingBottom: Spacing.sm, 
+  typing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.sm,
     gap: Spacing.sm,
   },
   typingDots: { flexDirection: 'row', gap: 4 },
-  typingDot: { 
-    width: 8, 
-    height: 8, 
-    borderRadius: 4, 
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: Colors.primary,
     opacity: 0.4,
   },
@@ -269,23 +358,23 @@ const styles = StyleSheet.create({
   typingDot2: { opacity: 0.6 },
   typingDot3: { opacity: 0.8 },
   typingText: { fontSize: 14, color: Colors.textLight },
-  inputContainer: { 
-    backgroundColor: Colors.card, 
-    borderTopWidth: 1, 
+  inputContainer: {
+    backgroundColor: Colors.card,
+    borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     paddingBottom: Platform.OS === 'ios' ? Spacing.lg : Spacing.md,
   },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm },
-  input: { 
-    flex: 1, 
-    backgroundColor: Colors.background, 
-    borderRadius: BorderRadius.xl, 
-    paddingHorizontal: Spacing.lg, 
-    paddingVertical: Spacing.md, 
-    fontSize: 15, 
-    color: Colors.text, 
+  input: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    fontSize: 15,
+    color: Colors.text,
     maxHeight: 120,
     minHeight: 44,
   },

@@ -1,39 +1,90 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, KeyboardAvoidingView, Platform, Modal, Image } from 'react-native';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/store';
-import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
+import { Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
+import * as ImagePicker from 'expo-image-picker';
+import { ocrService } from '../../src/services/ocrService';
 
 // Common emojis for quick selection
 const EMOJI_OPTIONS = ['🍔', '🚗', '🛒', '🎬', '📄', '💊', '💰', '💻', '🎁', '📈', '🏠', '✈️', '🎮', '📱', '👕', '💪', '🎓', '🐕', '☕', '🍕', '🎵', '⚽', '🎨', '💇', '🔧'];
 
 export default function AddTransaction() {
   const router = useRouter();
+  const { colors: Colors, settings } = useTheme();
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
   const { wallets, activeWallet, setActiveWallet, addTransaction, categories, loadCategories, addCategory } = useStore();
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   // Wallet selection
   const [showWalletModal, setShowWalletModal] = useState(false);
-  
+
   // New category modal
   const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('📌');
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   useEffect(() => {
     loadCategories(type);
   }, [type]);
 
+  useEffect(() => {
+    if (!activeWallet && wallets.length > 0) {
+      setActiveWallet(wallets[0] as any);
+    }
+  }, [activeWallet, wallets, setActiveWallet]);
+
+  const handleScanReceipt = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (permissionResult.granted === false) {
+      Alert.alert('Błąd', 'Wymagany dostęp do aparatu');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setOcrLoading(true);
+      try {
+        const ocrResult = await ocrService.processReceipt(result.assets[0].uri);
+        setAmount(ocrResult.amount.toString());
+
+        if (ocrResult.categorySuggestion) {
+          const suggestion = ocrResult.categorySuggestion.toLowerCase().trim();
+          const cat = categories.find((c: any) => {
+            const categoryName = String(c.name || '').toLowerCase();
+            const categoryEmoji = String(c.emoji || '');
+            return suggestion.includes(categoryName) || suggestion.includes(categoryEmoji);
+          });
+          if (cat) setSelectedCategory(cat);
+        }
+
+        Alert.alert('Paragon zeskanowany! ✨', `Wykryto kwotę: ${ocrResult.amount} PLN`);
+      } catch (e) {
+        Alert.alert('Błąd OCR', 'Nie udało się przetworzyć paragonu');
+      } finally {
+        setOcrLoading(false);
+      }
+    }
+  };
+
   // Filter categories by type
-  const filteredCategories = categories.filter(c => c.type === type);
+  const filteredCategories = categories.filter((c: any) => c.type === type);
 
   const handleSubmit = async () => {
     if (!amount || parseFloat(amount) <= 0) return Alert.alert('Błąd', 'Podaj kwotę');
@@ -44,10 +95,9 @@ export default function AddTransaction() {
     try {
       await addTransaction({
         wallet_id: activeWallet.id,
+        category_id: selectedCategory.id,
         amount: parseFloat(amount),
         type,
-        category: selectedCategory.name,
-        emoji: selectedCategory.emoji,
         note: note || undefined,
       });
       Alert.alert('Sukces! ✨', 'Transakcja dodana', [{ text: 'OK', onPress: () => router.back() }]);
@@ -60,7 +110,7 @@ export default function AddTransaction() {
 
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) return Alert.alert('Błąd', 'Podaj nazwę kategorii');
-    
+
     setCreatingCategory(true);
     try {
       await addCategory({
@@ -82,7 +132,15 @@ export default function AddTransaction() {
   const formatMoney = (n: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', minimumFractionDigits: 0 }).format(n);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]} edges={['top']}>
+      {/* Wallpaper Background */}
+      {settings.wallpaper && (
+        <Image
+          source={{ uri: settings.wallpaper.uri }}
+          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
+          blurRadius={settings.wallpaper.blur}
+        />
+      )}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
@@ -114,8 +172,8 @@ export default function AddTransaction() {
               onPress={() => { setType('expense'); setSelectedCategory(null); }}
               activeOpacity={0.7}
             >
-              <LinearGradient 
-                colors={type === 'expense' ? Gradients.expense : [Colors.card, Colors.card]} 
+              <LinearGradient
+                colors={type === 'expense' ? Gradients.expense : [Colors.card, Colors.card]}
                 style={styles.typeBtnInner}
               >
                 <Ionicons name="arrow-down" size={20} color={type === 'expense' ? Colors.white : Colors.expense} />
@@ -127,8 +185,8 @@ export default function AddTransaction() {
               onPress={() => { setType('income'); setSelectedCategory(null); }}
               activeOpacity={0.7}
             >
-              <LinearGradient 
-                colors={type === 'income' ? Gradients.income : [Colors.card, Colors.card]} 
+              <LinearGradient
+                colors={type === 'income' ? Gradients.income : [Colors.card, Colors.card]}
                 style={styles.typeBtnInner}
               >
                 <Ionicons name="arrow-up" size={20} color={type === 'income' ? Colors.white : Colors.income} />
@@ -138,12 +196,22 @@ export default function AddTransaction() {
           </View>
 
           {/* Amount */}
+          <View style={styles.amountHeader}>
+            <Text style={styles.label}>Kwota</Text>
+            <TouchableOpacity style={styles.scanBtn} onPress={handleScanReceipt} disabled={ocrLoading}>
+              <LinearGradient colors={Gradients.primary} style={styles.scanGradient}>
+                <Ionicons name="camera" size={18} color={Colors.white} />
+                <Text style={styles.scanText}>{ocrLoading ? 'Skanuję...' : 'Skanuj paragon'}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.amountBox}>
             <Text style={styles.currency}>zł</Text>
             <TextInput
               style={styles.amountInput}
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(text) => setAmount(text.replace(/[^0-9.,]/g, '').replace(',', '.'))}
               placeholder="0"
               placeholderTextColor={Colors.textMuted}
               keyboardType="decimal-pad"
@@ -158,16 +226,16 @@ export default function AddTransaction() {
               <Text style={styles.addCategoryText}>Nowa</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.categoriesGrid}>
-            {filteredCategories.map((cat) => (
+            {filteredCategories.map((cat: any) => (
               <TouchableOpacity
                 key={cat.id}
                 style={[
-                  styles.categoryBtn, 
-                  selectedCategory?.id === cat.id && { 
+                  styles.categoryBtn,
+                  selectedCategory?.id === cat.id && {
                     backgroundColor: type === 'income' ? Colors.incomeLight : Colors.expenseLight,
-                    borderColor: type === 'income' ? Colors.income : Colors.expense 
+                    borderColor: type === 'income' ? Colors.income : Colors.expense
                   }
                 ]}
                 onPress={() => setSelectedCategory(cat)}
@@ -175,7 +243,7 @@ export default function AddTransaction() {
               >
                 <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
                 <Text style={[
-                  styles.categoryName, 
+                  styles.categoryName,
                   selectedCategory?.id === cat.id && { color: type === 'income' ? Colors.income : Colors.expense }
                 ]} numberOfLines={1}>
                   {cat.name}
@@ -222,7 +290,7 @@ export default function AddTransaction() {
             </View>
 
             <ScrollView style={styles.walletList}>
-              {wallets.map((wallet) => (
+              {wallets.map((wallet: any) => (
                 <TouchableOpacity
                   key={wallet.id}
                   style={[styles.walletOption, activeWallet?.id === wallet.id && styles.walletOptionActive]}
@@ -265,10 +333,10 @@ export default function AddTransaction() {
             </View>
 
             <View style={styles.typeIndicator}>
-              <Ionicons 
-                name={type === 'income' ? 'arrow-up' : 'arrow-down'} 
-                size={16} 
-                color={type === 'income' ? Colors.income : Colors.expense} 
+              <Ionicons
+                name={type === 'income' ? 'arrow-up' : 'arrow-down'}
+                size={16}
+                color={type === 'income' ? Colors.income : Colors.expense}
               />
               <Text style={[styles.typeIndicatorText, { color: type === 'income' ? Colors.income : Colors.expense }]}>
                 {type === 'income' ? 'Przychód' : 'Wydatek'}
@@ -317,21 +385,30 @@ export default function AddTransaction() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  wallpaper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
   header: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg, paddingBottom: Spacing.md },
-  title: { fontSize: 28, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: 14, color: Colors.textLight, marginTop: 4 },
+  title: { fontSize: 30, fontWeight: '800', color: Colors.text, letterSpacing: -0.8 },
+  subtitle: { fontSize: 15, color: Colors.textLight, marginTop: 6, fontWeight: '500' },
   walletSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: Colors.card,
     marginHorizontal: Spacing.xl,
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg + 2,
+    borderRadius: 20,
     marginBottom: Spacing.lg,
-    ...Shadows.small,
+    ...Shadows.medium,
   },
   walletSelectorLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   walletIcon: {
@@ -344,93 +421,117 @@ const styles = StyleSheet.create({
   },
   walletIconShared: { backgroundColor: Colors.sharedLight },
   walletEmoji: { fontSize: 22 },
-  walletName: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  walletName: { fontSize: 17, fontWeight: '700', color: Colors.text, letterSpacing: -0.3 },
   walletBalance: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
   typeToggle: { flexDirection: 'row', gap: Spacing.md, marginHorizontal: Spacing.xl, marginBottom: Spacing.xl },
-  typeBtn: { flex: 1, borderRadius: BorderRadius.xl, overflow: 'hidden', ...Shadows.small },
+  typeBtn: { flex: 1, borderRadius: 20, overflow: 'hidden', ...Shadows.medium },
   typeBtnActive: {},
   typeBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.lg, gap: Spacing.sm, borderRadius: BorderRadius.xl },
   typeBtnText: { fontSize: 15, fontWeight: '600', color: Colors.text },
   typeBtnTextActive: { color: Colors.white },
-  amountBox: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    padding: Spacing.xl, 
+  amountBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    padding: Spacing.xl + 2,
     marginHorizontal: Spacing.xl,
     marginBottom: Spacing.xl,
+    ...Shadows.medium,
+  },
+  amountHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: Spacing.xl,
+    marginBottom: Spacing.sm,
+  },
+  scanBtn: {
+    borderRadius: BorderRadius.full,
+    overflow: 'hidden',
     ...Shadows.small,
   },
+  scanGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+  },
+  scanText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   currency: { fontSize: 28, fontWeight: '700', color: Colors.textMuted, marginRight: Spacing.sm },
-  amountInput: { flex: 1, fontSize: 44, fontWeight: '800', color: Colors.text },
+  amountInput: { flex: 1, fontSize: 48, fontWeight: '900', color: Colors.text, letterSpacing: -1 },
   categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: Spacing.xl, marginBottom: Spacing.md },
-  label: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginHorizontal: Spacing.xl, marginBottom: Spacing.sm },
+  label: { fontSize: 15, fontWeight: '700', color: Colors.textLight, marginHorizontal: Spacing.xl, marginBottom: Spacing.sm, letterSpacing: -0.2 },
   addCategoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addCategoryText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
-  categoriesGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    paddingHorizontal: Spacing.xl - 4, 
+  categoriesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: Spacing.xl - 4,
     marginBottom: Spacing.xl,
     gap: Spacing.sm,
   },
-  categoryBtn: { 
-    alignItems: 'center', 
-    paddingVertical: Spacing.md, 
-    paddingHorizontal: Spacing.md, 
-    borderRadius: BorderRadius.lg, 
-    backgroundColor: Colors.card, 
-    borderWidth: 2, 
-    borderColor: 'transparent', 
+  categoryBtn: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md + 2,
+    paddingHorizontal: Spacing.md,
+    borderRadius: 16,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: 'transparent',
     width: '30%',
     ...Shadows.small,
   },
   categoryEmoji: { fontSize: 26, marginBottom: 4 },
-  categoryName: { fontSize: 11, fontWeight: '600', color: Colors.textLight, textAlign: 'center' },
-  customBadge: { 
-    position: 'absolute', 
-    top: 4, 
-    right: 4, 
-    backgroundColor: Colors.primary, 
-    width: 16, 
-    height: 16, 
-    borderRadius: 8, 
-    justifyContent: 'center', 
+  categoryName: { fontSize: 12, fontWeight: '700', color: Colors.textLight, textAlign: 'center', letterSpacing: -0.2 },
+  customBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: Colors.primary,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   customBadgeText: { fontSize: 10, color: Colors.white, fontWeight: '600' },
-  noteInput: { 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    paddingHorizontal: Spacing.lg, 
-    height: 56, 
-    fontSize: 16, 
-    color: Colors.text, 
+  noteInput: {
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.lg + 2,
+    height: 58,
+    fontSize: 16,
+    color: Colors.text,
     marginHorizontal: Spacing.xl,
     marginBottom: Spacing.xl,
-    ...Shadows.small,
+    ...Shadows.medium,
   },
-  submitBtn: { borderRadius: BorderRadius.xl, overflow: 'hidden', marginHorizontal: Spacing.xl, ...Shadows.medium },
-  submitGradient: { height: 56, justifyContent: 'center', alignItems: 'center' },
-  submitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
-  
+  submitBtn: { borderRadius: 20, overflow: 'hidden', marginHorizontal: Spacing.xl, ...Shadows.medium },
+  submitGradient: { height: 58, justifyContent: 'center', alignItems: 'center' },
+  submitText: { fontSize: 17, fontWeight: '800', color: Colors.white, letterSpacing: -0.3 },
+
   // Modal styles
   modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
-  modalContent: { 
-    backgroundColor: Colors.card, 
-    borderTopLeftRadius: BorderRadius.xxl, 
-    borderTopRightRadius: BorderRadius.xxl, 
-    padding: Spacing.xxl, 
+  modalContent: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    padding: Spacing.xxl,
     maxHeight: '85%',
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
   modalTitle: { fontSize: 22, fontWeight: '700', color: Colors.text },
   modalLabel: { fontSize: 14, fontWeight: '600', color: Colors.textLight, marginBottom: Spacing.sm, marginTop: Spacing.lg },
   modalInput: { backgroundColor: Colors.background, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, height: 52, fontSize: 16, color: Colors.text },
-  typeIndicator: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  typeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.xs,
     backgroundColor: Colors.background,
     alignSelf: 'flex-start',
@@ -451,7 +552,7 @@ const styles = StyleSheet.create({
   modalSubmitBtn: { borderRadius: BorderRadius.md, overflow: 'hidden' },
   modalSubmitGradient: { height: 52, justifyContent: 'center', alignItems: 'center' },
   modalSubmitText: { fontSize: 16, fontWeight: '700', color: Colors.white },
-  
+
   // Wallet list
   walletList: { maxHeight: 400 },
   walletOption: {
@@ -477,13 +578,13 @@ const styles = StyleSheet.create({
   walletOptionName: { fontSize: 16, fontWeight: '600', color: Colors.text },
   walletOptionMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 4 },
   walletOptionBalance: { fontSize: 14, color: Colors.textLight },
-  sharedTag: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 4, 
-    backgroundColor: Colors.sharedLight, 
-    paddingHorizontal: Spacing.sm, 
-    paddingVertical: 2, 
+  sharedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.sharedLight,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
     borderRadius: BorderRadius.full,
   },
   sharedTagText: { fontSize: 11, color: Colors.shared, fontWeight: '600' },

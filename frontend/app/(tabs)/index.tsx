@@ -1,350 +1,684 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useStore } from '../../src/store/store';
-import { Colors, Gradients, Shadows, BorderRadius, Spacing } from '../../src/constants/theme';
+import { BorderRadius, Elevation, Spacing, Typography } from '../../src/constants/theme';
+import { AnimatedButton, AnimatedCard, AnimatedNumber } from '../../src/components/AnimatedComponents';
+import { WorkCalculatorModal } from '../../src/components/WorkCalculatorModal';
+import { WageSettingsModal } from '../../src/components/WageSettingsModal';
+import { SubscriptionCard } from '../../components/SubscriptionCard';
+import { AddSubscriptionModal } from '../../components/AddSubscriptionModal';
+import { Subscription, Transaction, Wallet } from '../../src/types';
+import { useTheme } from '../../src/contexts/ThemeContext';
 
-const { width } = Dimensions.get('window');
+interface QuickAction {
+  id: string;
+  label: string;
+  caption: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  gradient: [string, string];
+  onPress: () => void;
+}
+
+const formatMoney = (value: number) =>
+  new Intl.NumberFormat('pl-PL', {
+    style: 'currency',
+    currency: 'PLN',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value || 0);
+
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Dzień dobry';
+  if (hour < 18) return 'Miłego dnia';
+  return 'Dobry wieczór';
+};
 
 export default function Home() {
   const router = useRouter();
-  const { user, stats, transactions, wallets, loadData } = useStore();
-  const [refreshing, setRefreshing] = useState(false);
+  const { colors, settings, fontFamily, scaleFont } = useTheme();
+  const {
+    user,
+    stats,
+    transactions,
+    wallets,
+    loadData,
+    wageSettings,
+    saveWageSettings,
+    calculateWorkTime,
+    subscriptions,
+    loadSubscriptions,
+    updateSubscription,
+    deleteSubscription,
+  } = useStore();
 
-  useEffect(() => { loadData(); }, []);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [showWageSettings, setShowWageSettings] = useState(false);
+  const [showAddSubscription, setShowAddSubscription] = useState(false);
+
+  const styles = useMemo(() => getStyles(colors, fontFamily, scaleFont), [colors, fontFamily, scaleFont]);
+
+  useEffect(() => {
+    void loadData();
+    if (user) {
+      void loadSubscriptions();
+    }
+  }, [user, loadData, loadSubscriptions]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await Promise.all([loadData(), loadSubscriptions()]);
     setRefreshing(false);
   };
 
-  const formatMoney = (n: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', minimumFractionDigits: 0 }).format(n);
+  const recentTransactions = transactions.slice(0, 5);
+  const sharedWalletCount = wallets.filter((wallet: Wallet) => wallet.is_shared).length;
 
-  const recentTx = transactions.slice(0, 5);
-  const sharedWallets = wallets.filter(w => w.is_shared);
-  const personalWallets = wallets.filter(w => !w.is_shared);
+  const quickActions: QuickAction[] = [
+    {
+      id: 'add',
+      label: 'Nowy wpis',
+      caption: 'Przychód lub wydatek',
+      icon: 'add-circle-outline',
+      gradient: [colors.primary, colors.accent],
+      onPress: () => router.push('/add'),
+    },
+    {
+      id: 'planner',
+      label: 'Planer czasu',
+      caption: 'Ile godzin pracy',
+      icon: 'time-outline',
+      gradient: [colors.income, colors.accent],
+      onPress: () => setShowCalculator(true),
+    },
+    {
+      id: 'ai',
+      label: 'Asystent AI',
+      caption: 'Analiza finansów',
+      icon: 'sparkles-outline',
+      gradient: [colors.info, colors.primary],
+      onPress: () => router.push('/chat'),
+    },
+    {
+      id: 'wallets',
+      label: 'Portfele',
+      caption: 'Konta i udziały',
+      icon: 'wallet-outline',
+      gradient: [colors.warning, colors.secondary],
+      onPress: () => router.push('/wallets'),
+    },
+  ];
+
+  const openComingSoon = () => {
+    Alert.alert('Wkrótce', 'Ta funkcja będzie dostępna w kolejnej iteracji.');
+  };
+
+  const parseDate = (value: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return new Date(`${value}T00:00:00`);
+    }
+    return new Date(value);
+  };
+
+  const formatDateOnly = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getNextPaymentDate = (dateValue: string, cycle: Subscription['billing_cycle']) => {
+    const date = parseDate(dateValue);
+    date.setHours(0, 0, 0, 0);
+
+    if (cycle === 'weekly') {
+      date.setDate(date.getDate() + 7);
+      return formatDateOnly(date);
+    }
+
+    const currentDay = date.getDate();
+    date.setDate(1);
+    date.setMonth(date.getMonth() + (cycle === 'monthly' ? 1 : 12));
+    const maxDayInNewMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    date.setDate(Math.min(currentDay, maxDayInNewMonth));
+    return formatDateOnly(date);
+  };
+
+  const markSubscriptionAsPaid = async (subscription: Subscription) => {
+    try {
+      const nextPaymentDate = getNextPaymentDate(subscription.next_payment_date, subscription.billing_cycle);
+      await updateSubscription(subscription.id, { next_payment_date: nextPaymentDate });
+      Alert.alert('Zaktualizowano', `Kolejna płatność: ${parseDate(nextPaymentDate).toLocaleDateString('pl-PL')}`);
+    } catch (error) {
+      console.error('Failed to update subscription:', error);
+      Alert.alert('Błąd', 'Nie udało się zaktualizować subskrypcji');
+    }
+  };
+
+  const confirmDeleteSubscription = (subscription: Subscription) => {
+    Alert.alert(
+      'Usuń subskrypcję',
+      `Czy na pewno chcesz usunąć "${subscription.name}"?`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteSubscription(subscription.id);
+            } catch (error) {
+              console.error('Failed to delete subscription:', error);
+              Alert.alert('Błąd', 'Nie udało się usunąć subskrypcji');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const openSubscriptionActions = (subscription: Subscription) => {
+    Alert.alert(
+      subscription.name,
+      'Wybierz akcję dla subskrypcji',
+      [
+        {
+          text: 'Oznacz jako opłaconą',
+          onPress: () => {
+            void markSubscriptionAsPaid(subscription);
+          },
+        },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: () => confirmDeleteSubscription(subscription),
+        },
+        { text: 'Anuluj', style: 'cancel' },
+      ],
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {settings.wallpaper && (
+        <Image
+          source={{ uri: settings.wallpaper.uri }}
+          style={[styles.wallpaper, { opacity: settings.wallpaper.opacity }]}
+          blurRadius={settings.wallpaper.blur}
+        />
+      )}
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Cześć, {user?.name?.split(' ')[0]} 👋</Text>
-            <Text style={styles.date}>{new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
-          </View>
-          <TouchableOpacity style={styles.notificationBtn}>
-            <Ionicons name="notifications-outline" size={24} color={Colors.text} />
-          </TouchableOpacity>
-        </View>
+        <Animated.View entering={FadeIn.duration(500)} style={styles.heroBlock}>
+          <LinearGradient
+            colors={[colors.primary, colors.accent]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
+          >
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroGreeting}>{getGreeting()}, {user?.name?.split(' ')[0] || 'Użytkowniku'}</Text>
+                <Text style={styles.heroDate}>
+                  {new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </Text>
+              </View>
+              <AnimatedButton
+                style={styles.heroIconButton}
+                hapticFeedback="light"
+                onPress={() => router.push('/profile')}
+              >
+                <Ionicons name="person-circle-outline" size={28} color="#FFFFFF" />
+              </AnimatedButton>
+            </View>
 
-        {/* Balance Card */}
-        <LinearGradient colors={Gradients.primary} style={styles.balanceCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-          <View style={styles.balanceHeader}>
-            <Text style={styles.balanceLabel}>Całkowite saldo</Text>
-            <View style={styles.walletBadge}>
-              <Ionicons name="wallet-outline" size={14} color={Colors.white} />
-              <Text style={styles.walletCount}>{wallets.length} portfeli</Text>
+            <View style={styles.balanceWrap}>
+              <Text style={styles.balanceLabel}>Saldo łączne</Text>
+              <AnimatedNumber
+                value={stats?.total_balance || 0}
+                formatter={(value) => formatMoney(value)}
+                style={styles.balanceValue}
+              />
             </View>
-          </View>
-          <Text style={styles.balanceAmount}>{formatMoney(stats?.total_balance || 0)}</Text>
-          
-          <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <View style={[styles.statIcon, { backgroundColor: 'rgba(16,185,129,0.25)' }]}>
-                <Ionicons name="trending-up" size={18} color="#10B981" />
-              </View>
-              <View>
-                <Text style={styles.statLabel}>Przychody</Text>
-                <Text style={styles.statValue}>+{formatMoney(stats?.month_income || 0)}</Text>
-              </View>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <View style={[styles.statIcon, { backgroundColor: 'rgba(239,68,68,0.25)' }]}>
-                <Ionicons name="trending-down" size={18} color="#EF4444" />
-              </View>
-              <View>
-                <Text style={styles.statLabel}>Wydatki</Text>
-                <Text style={styles.statValue}>-{formatMoney(stats?.month_expenses || 0)}</Text>
-              </View>
-            </View>
-          </View>
-        </LinearGradient>
 
-        {/* Quick Actions */}
-        <View style={styles.actionsContainer}>
-          <Text style={styles.sectionTitle}>Szybkie akcje</Text>
-          <View style={styles.actions}>
-            <ActionButton icon="add" label="Przychód" color={Colors.income} gradient={Gradients.income} onPress={() => router.push('/(tabs)/add')} />
-            <ActionButton icon="remove" label="Wydatek" color={Colors.expense} gradient={Gradients.expense} onPress={() => router.push('/(tabs)/add')} />
-            <ActionButton icon="people" label="Wspólne" color={Colors.shared} gradient={Gradients.purple} onPress={() => router.push('/(tabs)/wallets')} />
-            <ActionButton icon="chatbubble-ellipses" label="AI" color={Colors.primary} gradient={Gradients.primary} onPress={() => router.push('/(tabs)/chat')} />
-          </View>
-        </View>
-
-        {/* Shared Wallets Preview */}
-        {sharedWallets.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Ionicons name="people" size={20} color={Colors.shared} />
-                <Text style={styles.sectionTitle}>Wspólne portfele</Text>
+            <View style={styles.heroStatsRow}>
+              <View style={styles.heroStatChip}>
+                <Text style={styles.heroStatLabel}>Portfele</Text>
+                <Text style={styles.heroStatValue}>{wallets.length}</Text>
               </View>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/wallets')}>
-                <Text style={styles.seeAll}>Zobacz wszystko</Text>
-              </TouchableOpacity>
+              <View style={styles.heroStatChip}>
+                <Text style={styles.heroStatLabel}>Wspólne</Text>
+                <Text style={styles.heroStatValue}>{sharedWalletCount}</Text>
+              </View>
+              <View style={styles.heroStatChip}>
+                <Text style={styles.heroStatLabel}>Mies. wynik</Text>
+                <Text style={styles.heroStatValue}>
+                  {formatMoney((stats?.month_income || 0) - (stats?.month_expenses || 0))}
+                </Text>
+              </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.walletsScroll}>
-              {sharedWallets.slice(0, 3).map((wallet) => (
-                <TouchableOpacity key={wallet.id} style={styles.walletCard} onPress={() => router.push('/(tabs)/wallets')}>
-                  <LinearGradient colors={Gradients.purple} style={styles.walletGradient}>
-                    <Text style={styles.walletEmoji}>{wallet.emoji}</Text>
-                    <Text style={styles.walletName} numberOfLines={1}>{wallet.name}</Text>
-                    <Text style={styles.walletBalance}>{formatMoney(wallet.balance)}</Text>
-                    <View style={styles.walletMembers}>
-                      <Ionicons name="people-outline" size={12} color="rgba(255,255,255,0.8)" />
-                      <Text style={styles.walletMembersText}>Wspólny</Text>
-                    </View>
+          </LinearGradient>
+        </Animated.View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Szybkie akcje</Text>
+            <TouchableOpacity onPress={openComingSoon}>
+              <Text style={styles.sectionLink}>Więcej</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.quickActionsGrid}>
+            {quickActions.map((action, index) => (
+              <Animated.View key={action.id} entering={FadeInDown.delay(120 + index * 70).duration(500)} style={styles.quickActionCell}>
+                <AnimatedButton style={styles.quickActionCard} onPress={action.onPress} hapticFeedback="light">
+                  <LinearGradient colors={action.gradient} style={styles.quickActionIconWrap}>
+                    <Ionicons name={action.icon} size={20} color="#FFFFFF" />
                   </LinearGradient>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  <Text style={styles.quickActionTitle}>{action.label}</Text>
+                  <Text style={styles.quickActionCaption}>{action.caption}</Text>
+                </AnimatedButton>
+              </Animated.View>
+            ))}
           </View>
-        )}
+        </View>
 
-        {/* Recent Transactions */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Subskrypcje</Text>
+            <TouchableOpacity onPress={() => setShowAddSubscription(true)}>
+              <Text style={styles.sectionLink}>Dodaj</Text>
+            </TouchableOpacity>
+          </View>
+
+          {subscriptions && subscriptions.length > 0 ? (
+            <View style={styles.sectionList}>
+              {subscriptions.slice(0, 3).map((subscription: Subscription, index: number) => (
+                <SubscriptionCard
+                  key={subscription.id}
+                  subscription={subscription}
+                  onPress={() => openSubscriptionActions(subscription)}
+                  index={index}
+                />
+              ))}
+            </View>
+          ) : (
+            <AnimatedCard entrance="slideUp" style={styles.emptyCard}>
+              <View style={[styles.emptyIconCircle, { backgroundColor: colors.incomeLight }]}>
+                <Ionicons name="repeat-outline" size={24} color={colors.income} />
+              </View>
+              <Text style={styles.emptyTitle}>Brak aktywnych subskrypcji</Text>
+              <Text style={styles.emptyDescription}>Dodaj je, aby pilnować stałych kosztów.</Text>
+              <AnimatedButton style={styles.emptyButton} onPress={() => setShowAddSubscription(true)} hapticFeedback="light">
+                <Text style={styles.emptyButtonText}>Dodaj pierwszą</Text>
+              </AnimatedButton>
+            </AnimatedCard>
+          )}
+        </View>
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Ostatnie transakcje</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/transactions')}>
-              <Text style={styles.seeAll}>Zobacz wszystko</Text>
+            <TouchableOpacity onPress={() => router.push('/transactions')}>
+              <Text style={styles.sectionLink}>Historia</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.transactionsCard}>
-            {recentTx.length > 0 ? (
-              recentTx.map((tx, index) => (
-                <View key={tx.id} style={[styles.txItem, index === recentTx.length - 1 && styles.txItemLast]}>
-                  <View style={[styles.txIcon, { backgroundColor: tx.type === 'income' ? Colors.incomeLight : Colors.expenseLight }]}>
-                    <Text style={styles.txEmoji}>{tx.emoji}</Text>
-                  </View>
-                  <View style={styles.txInfo}>
-                    <Text style={styles.txCategory}>{tx.category}</Text>
-                    <Text style={styles.txDate}>{new Date(tx.created_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}</Text>
-                  </View>
-                  <Text style={[styles.txAmount, { color: tx.type === 'income' ? Colors.income : Colors.expense }]}>
-                    {tx.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
-                  </Text>
-                </View>
-              ))
+            {recentTransactions.length === 0 ? (
+              <Text style={styles.noDataText}>Brak ostatnich operacji</Text>
             ) : (
-              <View style={styles.empty}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons name="receipt-outline" size={32} color={Colors.textMuted} />
-                </View>
-                <Text style={styles.emptyText}>Brak transakcji</Text>
-                <Text style={styles.emptySubtext}>Dodaj swoją pierwszą transakcję</Text>
-              </View>
+              recentTransactions.map((tx: Transaction, index: number) => {
+                const isIncome = tx.type === 'income';
+                return (
+                  <TouchableOpacity
+                    key={tx.id}
+                    style={[styles.transactionRow, index !== recentTransactions.length - 1 && styles.transactionRowBorder]}
+                    onPress={() => router.push('/transactions')}
+                  >
+                    <View
+                      style={[
+                        styles.transactionIconWrap,
+                        { backgroundColor: isIncome ? colors.incomeLight : colors.expenseLight },
+                      ]}
+                    >
+                      <Text style={styles.transactionEmoji}>{tx.emoji || (isIncome ? '💸' : '💳')}</Text>
+                    </View>
+                    <View style={styles.transactionMeta}>
+                      <Text style={styles.transactionTitle}>{tx.category || 'Transakcja'}</Text>
+                      <Text style={styles.transactionSubtitle}>
+                        {new Date(tx.created_at).toLocaleDateString('pl-PL')}
+                      </Text>
+                    </View>
+                    <Text style={[styles.transactionAmount, { color: isIncome ? colors.income : colors.expense }]}>
+                      {isIncome ? '+' : '-'}{formatMoney(tx.amount)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
             )}
           </View>
         </View>
-
-        {/* Goals Progress */}
-        {stats?.goals_progress?.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Cele oszczędnościowe</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/goals')}>
-                <Text style={styles.seeAll}>Zobacz wszystko</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.goalsCard}>
-              {stats.goals_progress.slice(0, 2).map((goal: any) => (
-                <View key={goal.id} style={styles.goalItem}>
-                  <View style={styles.goalHeader}>
-                    <View style={styles.goalIcon}>
-                      <Text style={styles.goalEmoji}>{goal.emoji}</Text>
-                    </View>
-                    <View style={styles.goalInfo}>
-                      <Text style={styles.goalName}>{goal.name}</Text>
-                      <Text style={styles.goalProgress}>{formatMoney(goal.current)} / {formatMoney(goal.target)}</Text>
-                    </View>
-                    <Text style={styles.goalPercent}>{Math.round(goal.progress)}%</Text>
-                  </View>
-                  <View style={styles.goalProgressBar}>
-                    <LinearGradient
-                      colors={goal.progress >= 100 ? Gradients.income : Gradients.primary}
-                      style={[styles.goalProgressFill, { width: `${Math.min(goal.progress, 100)}%` }]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
+
+      <WorkCalculatorModal
+        visible={showCalculator}
+        onClose={() => setShowCalculator(false)}
+        wageSettings={wageSettings}
+        onOpenSettings={() => {
+          setShowCalculator(false);
+          setTimeout(() => setShowWageSettings(true), 300);
+        }}
+        calculateWorkTime={calculateWorkTime}
+        sharedWalletMembers={wallets.find((wallet: Wallet) => wallet.is_shared)?.members_details || []}
+      />
+
+      <WageSettingsModal
+        visible={showWageSettings}
+        onClose={() => setShowWageSettings(false)}
+        onSave={async (updatedSettings) => {
+          await saveWageSettings(updatedSettings);
+          setShowWageSettings(false);
+          setTimeout(() => setShowCalculator(true), 300);
+        }}
+        initialSettings={wageSettings}
+      />
+
+      <AddSubscriptionModal visible={showAddSubscription} onClose={() => setShowAddSubscription(false)} />
     </SafeAreaView>
   );
 }
 
-const ActionButton = ({ icon, label, gradient, onPress }: any) => (
-  <TouchableOpacity style={styles.actionBtn} onPress={onPress} activeOpacity={0.7}>
-    <LinearGradient colors={gradient} style={styles.actionIcon}>
-      <Ionicons name={icon} size={22} color={Colors.white} />
-    </LinearGradient>
-    <Text style={styles.actionLabel}>{label}</Text>
-  </TouchableOpacity>
-);
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: Spacing.xl, 
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-  },
-  headerLeft: { flex: 1 },
-  greeting: { fontSize: 26, fontWeight: '700', color: Colors.text, letterSpacing: -0.5 },
-  date: { fontSize: 14, color: Colors.textLight, marginTop: 4, textTransform: 'capitalize' },
-  notificationBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Shadows.small,
-  },
-  balanceCard: { 
-    marginHorizontal: Spacing.xl, 
-    padding: Spacing.xxl, 
-    borderRadius: BorderRadius.xxl,
-    ...Shadows.large,
-  },
-  balanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  balanceLabel: { fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
-  walletBadge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(255,255,255,0.2)', 
-    paddingHorizontal: 10, 
-    paddingVertical: 4, 
-    borderRadius: BorderRadius.full,
-    gap: 4,
-  },
-  walletCount: { fontSize: 12, color: Colors.white, fontWeight: '600' },
-  balanceAmount: { fontSize: 38, fontWeight: '800', color: Colors.white, marginVertical: 12, letterSpacing: -1 },
-  statsRow: { flexDirection: 'row', marginTop: Spacing.lg, alignItems: 'center' },
-  statBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  statDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.2)' },
-  statIcon: { width: 40, height: 40, borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center' },
-  statLabel: { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '500' },
-  statValue: { fontSize: 15, fontWeight: '700', color: Colors.white, marginTop: 2 },
-  actionsContainer: { paddingHorizontal: Spacing.xl, marginTop: Spacing.xxl },
-  actions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.md },
-  actionBtn: { alignItems: 'center', width: (width - 80) / 4 },
-  actionIcon: { 
-    width: 56, 
-    height: 56, 
-    borderRadius: BorderRadius.lg, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: Spacing.sm,
-    ...Shadows.medium,
-  },
-  actionLabel: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
-  section: { marginTop: Spacing.xxl, paddingHorizontal: Spacing.xl },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
-  seeAll: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
-  walletsScroll: { marginHorizontal: -Spacing.xl, paddingHorizontal: Spacing.xl },
-  walletCard: { 
-    width: 160, 
-    marginRight: Spacing.md, 
-    borderRadius: BorderRadius.xl, 
-    overflow: 'hidden',
-    ...Shadows.medium,
-  },
-  walletGradient: { padding: Spacing.lg },
-  walletEmoji: { fontSize: 28, marginBottom: Spacing.sm },
-  walletName: { fontSize: 14, fontWeight: '600', color: Colors.white, marginBottom: 4 },
-  walletBalance: { fontSize: 18, fontWeight: '700', color: Colors.white },
-  walletMembers: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.sm },
-  walletMembersText: { fontSize: 11, color: 'rgba(255,255,255,0.8)' },
-  transactionsCard: { 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    padding: Spacing.lg,
-    ...Shadows.small,
-  },
-  txItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: Spacing.md, 
-    borderBottomWidth: 1, 
-    borderBottomColor: Colors.borderLight,
-  },
-  txItemLast: { borderBottomWidth: 0 },
-  txIcon: { width: 48, height: 48, borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center' },
-  txEmoji: { fontSize: 22 },
-  txInfo: { flex: 1, marginLeft: Spacing.md },
-  txCategory: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  txDate: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
-  txAmount: { fontSize: 16, fontWeight: '700' },
-  empty: { alignItems: 'center', paddingVertical: Spacing.xxxl },
-  emptyIcon: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: BorderRadius.full, 
-    backgroundColor: Colors.backgroundDark, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  emptyText: { fontSize: 16, fontWeight: '600', color: Colors.text },
-  emptySubtext: { fontSize: 14, color: Colors.textMuted, marginTop: 4 },
-  goalsCard: { 
-    backgroundColor: Colors.card, 
-    borderRadius: BorderRadius.xl, 
-    padding: Spacing.lg,
-    ...Shadows.small,
-  },
-  goalItem: { marginBottom: Spacing.lg },
-  goalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
-  goalIcon: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: BorderRadius.md, 
-    backgroundColor: Colors.primaryDark + '15', 
-    justifyContent: 'center', 
-    alignItems: 'center',
-  },
-  goalEmoji: { fontSize: 20 },
-  goalInfo: { flex: 1, marginLeft: Spacing.md },
-  goalName: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  goalProgress: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
-  goalPercent: { fontSize: 16, fontWeight: '700', color: Colors.primary },
-  goalProgressBar: { 
-    height: 8, 
-    backgroundColor: Colors.backgroundDark, 
-    borderRadius: BorderRadius.full, 
-    overflow: 'hidden',
-  },
-  goalProgressFill: { height: '100%', borderRadius: BorderRadius.full },
-});
+const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size: number) => number) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    wallpaper: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    scrollContent: {
+      paddingBottom: 120,
+    },
+    heroBlock: {
+      marginHorizontal: Spacing.xl,
+      marginTop: Spacing.md,
+      marginBottom: Spacing.xxl,
+    },
+    heroCard: {
+      borderRadius: 30,
+      paddingHorizontal: Spacing.xxl,
+      paddingVertical: Spacing.xxl,
+      ...Elevation.level5,
+    },
+    heroTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    heroTextWrap: {
+      flex: 1,
+      paddingRight: Spacing.sm,
+    },
+    heroGreeting: {
+      ...Typography.h3,
+      color: '#FFFFFF',
+      fontWeight: '800',
+      letterSpacing: -0.3,
+      fontFamily,
+    },
+    heroDate: {
+      marginTop: 4,
+      fontSize: scaleFont(13),
+      color: 'rgba(255,255,255,0.82)',
+      textTransform: 'capitalize',
+      fontWeight: '500',
+      fontFamily,
+    },
+    heroIconButton: {
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.16)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.22)',
+    },
+    balanceWrap: {
+      marginTop: Spacing.xxl,
+    },
+    balanceLabel: {
+      fontSize: scaleFont(13),
+      color: 'rgba(255,255,255,0.78)',
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      fontFamily,
+    },
+    balanceValue: {
+      marginTop: Spacing.sm,
+      fontSize: scaleFont(40),
+      lineHeight: scaleFont(46),
+      color: '#FFFFFF',
+      fontFamily: fontFamily || 'SpaceMono',
+      letterSpacing: -1.2,
+    },
+    heroStatsRow: {
+      marginTop: Spacing.xl,
+      flexDirection: 'row',
+      gap: Spacing.sm,
+    },
+    heroStatChip: {
+      flex: 1,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: 'rgba(255,255,255,0.14)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.2)',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 10,
+    },
+    heroStatLabel: {
+      fontSize: scaleFont(10),
+      color: 'rgba(255,255,255,0.72)',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      fontWeight: '700',
+      fontFamily,
+    },
+    heroStatValue: {
+      marginTop: 4,
+      fontSize: scaleFont(14),
+      color: '#FFFFFF',
+      fontWeight: '700',
+      letterSpacing: -0.2,
+      fontFamily,
+    },
+    section: {
+      marginBottom: Spacing.xxl,
+    },
+    sectionHeader: {
+      paddingHorizontal: Spacing.xl,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: Spacing.lg,
+    },
+    sectionTitle: {
+      ...Typography.h3,
+      color: colors.text,
+      fontSize: scaleFont(21),
+      letterSpacing: -0.5,
+      fontFamily,
+    },
+    sectionLink: {
+      color: colors.primary,
+      fontSize: scaleFont(13),
+      fontWeight: '700',
+      letterSpacing: 0.2,
+      textTransform: 'uppercase',
+      fontFamily,
+    },
+    quickActionsGrid: {
+      marginHorizontal: Spacing.xl,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      rowGap: Spacing.md,
+    },
+    quickActionCell: {
+      width: '48.2%',
+    },
+    quickActionCard: {
+      borderRadius: BorderRadius.xl,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      padding: Spacing.lg,
+      minHeight: 132,
+      ...Elevation.level2,
+    },
+    quickActionIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: Spacing.md,
+    },
+    quickActionTitle: {
+      fontSize: scaleFont(15),
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -0.3,
+      fontFamily,
+    },
+    quickActionCaption: {
+      marginTop: 4,
+      fontSize: scaleFont(12),
+      color: colors.textLight,
+      lineHeight: scaleFont(16),
+      fontWeight: '500',
+      fontFamily,
+    },
+    sectionList: {
+      marginHorizontal: Spacing.xl,
+    },
+    emptyCard: {
+      marginHorizontal: Spacing.xl,
+      borderRadius: BorderRadius.xl,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.xxl,
+      alignItems: 'center',
+      ...Elevation.level2,
+    },
+    emptyIconCircle: {
+      width: 52,
+      height: 52,
+      borderRadius: BorderRadius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: Spacing.md,
+    },
+    emptyTitle: {
+      ...Typography.bodyBold,
+      color: colors.text,
+      fontWeight: '700',
+      fontFamily,
+    },
+    emptyDescription: {
+      marginTop: 4,
+      ...Typography.caption,
+      color: colors.textLight,
+      textAlign: 'center',
+      fontFamily,
+    },
+    emptyButton: {
+      marginTop: Spacing.lg,
+      backgroundColor: colors.primary,
+      borderRadius: BorderRadius.pill,
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: 10,
+    },
+    emptyButtonText: {
+      color: '#FFFFFF',
+      fontSize: scaleFont(13),
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+      fontFamily,
+    },
+    transactionsCard: {
+      marginHorizontal: Spacing.xl,
+      borderRadius: BorderRadius.xl,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      paddingHorizontal: Spacing.lg,
+      ...Elevation.level2,
+    },
+    noDataText: {
+      ...Typography.caption,
+      color: colors.textMuted,
+      textAlign: 'center',
+      paddingVertical: Spacing.xl,
+      fontFamily,
+    },
+    transactionRow: {
+      paddingVertical: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    transactionRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderLight,
+    },
+    transactionIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    transactionEmoji: {
+      fontSize: scaleFont(20),
+    },
+    transactionMeta: {
+      flex: 1,
+      marginLeft: 12,
+      marginRight: Spacing.sm,
+    },
+    transactionTitle: {
+      fontSize: scaleFont(15),
+      color: colors.text,
+      fontWeight: '700',
+      letterSpacing: -0.2,
+      fontFamily,
+    },
+    transactionSubtitle: {
+      marginTop: 2,
+      fontSize: scaleFont(12),
+      color: colors.textLight,
+      fontWeight: '500',
+      fontFamily,
+    },
+    transactionAmount: {
+      fontSize: scaleFont(15),
+      fontWeight: '800',
+      letterSpacing: -0.2,
+      fontFamily,
+    },
+  });

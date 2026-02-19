@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/store';
+import { authService } from '../../src/services/authService';
 import { Colors, Gradients } from '../../src/constants/theme';
 
 export default function Register() {
@@ -19,10 +20,31 @@ export default function Register() {
     if (password.length < 6) return Alert.alert('Błąd', 'Hasło min. 6 znaków');
     setLoading(true);
     try {
-      await register(email, password, name);
-      router.replace('/(tabs)');
+      const username = email.split('@')[0] + Math.floor(Math.random() * 1000).toString();
+      await register(email, password, name, username);
+      const session = await authService.getCurrentSession();
+      if (session) {
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Konto utworzone', 'Sprawdź email i potwierdź rejestrację, potem zaloguj się.');
+        router.replace('/(auth)/login');
+      }
     } catch (e: any) {
-      Alert.alert('Błąd', e.message);
+      const message = String(e?.message || '');
+      const lower = message.toLowerCase();
+
+      if (lower.includes('rate limit') || lower.includes('limit emaili')) {
+        Alert.alert(
+          'Limit wiadomości email',
+          'Za dużo prób rejestracji w krótkim czasie. Odczekaj kilka minut i spróbuj ponownie.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Logowanie', onPress: () => router.replace('/(auth)/login') },
+          ]
+        );
+      } else {
+        Alert.alert('Błąd', message || 'Coś poszło nie tak');
+      }
     } finally {
       setLoading(false);
     }
