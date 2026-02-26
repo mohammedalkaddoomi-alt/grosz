@@ -334,6 +334,18 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
 
       // Calculate stats
       const now = new Date();
+      const expensesThisMonth = allTransactions.filter(t => {
+        const txDate = new Date(t.created_at);
+        return t.type === 'expense' && txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+      });
+
+      const expense_categories = expensesThisMonth.reduce((acc: Record<string, number>, t: any) => {
+        const catName = t.category || categories.find((c: any) => c.id === t.category_id)?.name || 'Inne';
+        if (!acc[catName]) acc[catName] = 0;
+        acc[catName] += t.amount;
+        return acc;
+      }, {});
+
       const stats = {
         total_balance: wallets.reduce((acc, w) => acc + (w.balance || 0), 0),
         month_income: allTransactions
@@ -342,15 +354,10 @@ const createSupabaseStore = () => create<AppState>((set, get) => ({
             return t.type === 'income' && txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
           })
           .reduce((acc, t) => acc + t.amount, 0),
-        month_expenses: allTransactions
-          .filter(t => {
-            const txDate = new Date(t.created_at);
-            return t.type === 'expense' && txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
-          })
-          .reduce((acc, t) => acc + t.amount, 0),
+        month_expenses: expensesThisMonth.reduce((acc, t) => acc + t.amount, 0),
         wallets_count: wallets.length,
         goals_progress: [],
-        expense_categories: {},
+        expense_categories,
       };
 
       const currentActiveWalletId = get().activeWallet?.id;

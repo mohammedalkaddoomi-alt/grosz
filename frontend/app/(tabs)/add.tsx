@@ -66,6 +66,18 @@ export default function AddTransaction() {
     loadCategories(type);
   }, [type]);
 
+  // Filter categories by type
+  const filteredCategories = useMemo(() =>
+    categories.filter((c: any) => c.type === type),
+    [categories, type]);
+
+  // Auto-select first category for <5s fast entry
+  useEffect(() => {
+    if (filteredCategories.length > 0 && !selectedCategory) {
+      setSelectedCategory(filteredCategories[0]);
+    }
+  }, [filteredCategories, selectedCategory]);
+
   useEffect(() => {
     if (!activeWallet && wallets.length > 0) {
       setActiveWallet(wallets[0] as any);
@@ -111,8 +123,7 @@ export default function AddTransaction() {
     }
   };
 
-  // Filter categories by type
-  const filteredCategories = categories.filter((c: any) => c.type === type);
+  // (Moved logic to useMemo above)
 
   const handleSubmit = async () => {
     if (!amount || parseFloat(amount) <= 0) return Alert.alert('Błąd', 'Podaj kwotę');
@@ -253,6 +264,7 @@ export default function AddTransaction() {
               placeholder="0"
               placeholderTextColor={Colors.textMuted}
               keyboardType="decimal-pad"
+              autoFocus={true}
             />
           </View>
 

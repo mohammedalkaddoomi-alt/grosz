@@ -88,17 +88,27 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const redirectTo = Linking.createURL('auth/callback');
+      // In Expo Go, we must construct the URL using createURL so it resolves to exp://...
+      // providing the scheme ensures it matches app.json
+      const redirectTo = Linking.createURL('auth/callback', { scheme: 'cenny-grosz' });
       const { data, error } = await authService.signInWithGoogle(redirectTo);
       if (error) throw new Error(error.message);
       if (!data?.url) throw new Error('Nie udało się rozpocząć logowania Google');
+
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
       if (result.type === 'success') {
         const { error: completionError } = await authService.completeOAuthSignIn(result.url);
         if (completionError) throw completionError;
         await init();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace('/(tabs)');
+
+        const pinEnabled = useStore.getState().securitySettings.isPinEnabled;
+        if (pinEnabled) {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/(auth)/setup-pin');
+        }
       } else if (result.type !== 'cancel') {
         throw new Error('Logowanie Google zostało przerwane');
       }
@@ -144,12 +154,22 @@ export default function Login() {
     try {
       if (isLogin) {
         await login(email.trim(), password);
-        router.replace('/(tabs)');
+        const pinEnabled = useStore.getState().securitySettings.isPinEnabled;
+        if (pinEnabled) {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/(auth)/setup-pin');
+        }
       } else {
         await register(email.trim(), password, name.trim(), username.trim());
         const session = await authService.getCurrentSession();
         if (session) {
-          router.replace('/(tabs)');
+          const pinEnabled = useStore.getState().securitySettings.isPinEnabled;
+          if (pinEnabled) {
+            router.replace('/(tabs)');
+          } else {
+            router.replace('/(auth)/setup-pin');
+          }
         } else {
           Alert.alert('Konto utworzone', 'Sprawdź email i potwierdź rejestrację, potem zaloguj się.');
           setIsLogin(true);
@@ -197,7 +217,12 @@ export default function Login() {
     setLoading(true);
     try {
       await login(DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD);
-      router.replace('/(tabs)');
+      const pinEnabled = useStore.getState().securitySettings.isPinEnabled;
+      if (pinEnabled) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/(auth)/setup-pin');
+      }
     } catch (e: any) {
       Alert.alert('Błąd', e?.message || 'Nie udało się zalogować demo');
     } finally {

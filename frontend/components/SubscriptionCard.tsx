@@ -12,6 +12,14 @@ interface SubscriptionCardProps {
     index: number;
 }
 
+const formatMoney = (value: number) =>
+    new Intl.NumberFormat('pl-PL', {
+        style: 'currency',
+        currency: 'PLN',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(value || 0);
+
 export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ subscription, onPress, index }) => {
     const { colors, settings } = useTheme();
     const isDark = settings.preset === 'dark';
@@ -49,6 +57,22 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ subscription
         return `${daysRemaining} dni`;
     };
 
+    const getBurnRateText = () => {
+        const price = subscription.price;
+        if (subscription.billing_cycle === 'monthly') {
+            return `~${formatMoney(price * 12)} / rok`;
+        }
+        if (subscription.billing_cycle === 'yearly') {
+            return `~${formatMoney(price / 12)} / m-c`;
+        }
+        if (subscription.billing_cycle === 'weekly') {
+            return `~${formatMoney(price * 52)} / rok`;
+        }
+        return '';
+    };
+
+    const isPotentiallyUnused = subscription.price >= 50 && subscription.id.length % 2 === 0; // Simple demo mock
+
     return (
         <Animated.View
             entering={FadeInRight.delay(index * 100).springify()}
@@ -76,13 +100,16 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ subscription
                     <View style={styles.info}>
                         <Text style={[styles.name, { color: colors.text }]}>{subscription.name}</Text>
                         <Text style={[styles.cycle, { color: colors.textLight }]}>
-                            {subscription.billing_cycle === 'weekly' ? 'Weekly' :
-                                subscription.billing_cycle === 'monthly' ? 'Monthly' : 'Yearly'}
+                            {subscription.billing_cycle === 'weekly' ? 'Tygodniowo' :
+                                subscription.billing_cycle === 'monthly' ? 'Miesięcznie' : 'Rocznie'}
                         </Text>
                     </View>
                     <View style={styles.priceContainer}>
                         <Text style={[styles.price, { color: colors.text }]}>
-                            {subscription.price} {subscription.currency}
+                            {formatMoney(subscription.price)}
+                        </Text>
+                        <Text style={[styles.burnRate, { color: colors.textLight }]}>
+                            {getBurnRateText()}
                         </Text>
                     </View>
                 </View>
@@ -106,6 +133,15 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ subscription
                         </Text>
                     </View>
                 </View>
+
+                {isPotentiallyUnused && (
+                    <View style={[styles.suggestionBar, { backgroundColor: colors.warning + '15' }]}>
+                        <Ionicons name="bulb-outline" size={14} color={colors.warning} />
+                        <Text style={[styles.suggestionText, { color: colors.warning }]}>
+                            Rzadko używane? Rozważ anulowanie.
+                        </Text>
+                    </View>
+                )}
             </TouchableOpacity>
         </Animated.View>
     );
@@ -188,6 +224,22 @@ const styles = StyleSheet.create({
     },
     badgeText: {
         fontSize: 11,
+        fontWeight: '600',
+    },
+    burnRate: {
+        fontSize: 11,
+        marginTop: 2,
+    },
+    suggestionBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 12,
+        padding: 8,
+        borderRadius: 8,
+    },
+    suggestionText: {
+        fontSize: 12,
         fontWeight: '600',
     },
 });

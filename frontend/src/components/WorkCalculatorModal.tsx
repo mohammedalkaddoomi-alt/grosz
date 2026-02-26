@@ -75,6 +75,15 @@ export const WorkCalculatorModal: React.FC<WorkCalculatorModalProps> = ({
 
     const timeDisplay = getTimeDisplay();
 
+    const getMotivationalCopy = () => {
+        if (!calculation || !itemPrice) return null;
+        const hours = calculation.hoursNeeded;
+        if (hours < 1) return "To tylko ułamek Twojego dnia. Ciesz się! ☕";
+        if (hours < 8) return "Prawie dniówka. Czy na pewno tego potrzebujesz? 🤔";
+        if (hours < 40) return "To kosztuje Cię tydzień życia! Pamiętaj, by zapłacić też sobie. 💸";
+        return "Grubszy wydatek. Prześpij się z tą decyzją, zanim kupisz! 🛌";
+    };
+
     return (
         <Modal
             visible={visible}
@@ -193,6 +202,12 @@ export const WorkCalculatorModal: React.FC<WorkCalculatorModalProps> = ({
                                                         {calculation.daysNeeded.toFixed(1)} dni
                                                     </Text>
                                                 </View>
+                                            </View>
+
+                                            <View style={styles.motivationContainer}>
+                                                <Text style={styles.motivationText}>
+                                                    {getMotivationalCopy()}
+                                                </Text>
                                             </View>
                                         </LinearGradient>
                                     </AnimatedCard>
@@ -533,6 +548,22 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: 'rgba(255,255,255,0.9)',
         fontWeight: '600',
+    },
+    motivationContainer: {
+        marginTop: Spacing.lg,
+        paddingTop: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.2)',
+        width: '100%',
+        alignItems: 'center',
+    },
+    motivationText: {
+        fontSize: 14,
+        color: Colors.white,
+        fontWeight: '700',
+        textAlign: 'center',
+        fontStyle: 'italic',
+        letterSpacing: -0.2,
     },
     sharedSection: {
         backgroundColor: Colors.card,

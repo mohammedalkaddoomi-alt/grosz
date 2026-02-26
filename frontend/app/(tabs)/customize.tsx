@@ -15,9 +15,9 @@ import { WallpaperBackground } from '../../src/components/WallpaperBackground';
 
 // Bundled wallpaper images
 const WALLPAPER_IMAGES = {
-    dark_indigo: require('../../assets/wallpapers/dark_indigo.png'),
-    soft_pastel: require('../../assets/wallpapers/soft_pastel.png'),
-    sunset_warm: require('../../assets/wallpapers/sunset_warm.png'),
+    dark_indigo: require('../../assets/wallpapers/dark_indigo.jpg'),
+    soft_pastel: require('../../assets/wallpapers/soft_pastel.jpg'),
+    sunset_warm: require('../../assets/wallpapers/sunset_warm.jpg'),
 };
 
 interface PresetWallpaper {
@@ -232,6 +232,27 @@ export default function Customize() {
                             <Ionicons name="color-palette" size={24} color={colors.primary} />
                             <Text style={[styles.sectionTitle, { color: colors.text }]}>Motyw kolorów</Text>
                         </View>
+
+                        {/* Light / Dark Mode Toggle */}
+                        <Text style={[styles.controlLabel, { color: colors.textSecondary, marginBottom: Spacing.sm }]}>Podstawowy styl</Text>
+                        <View style={[styles.segmentedControl, { backgroundColor: colors.backgroundDark }]}>
+                            <TouchableOpacity
+                                style={[styles.segmentBtn, ['default', 'ocean', 'sunset', 'forest', 'rose', 'minimal_light'].includes(settings.preset) && { backgroundColor: colors.primary }]}
+                                onPress={() => handleThemeSelect('default')}
+                            >
+                                <Ionicons name="sunny-outline" size={20} color={['default', 'ocean', 'sunset', 'forest', 'rose', 'minimal_light'].includes(settings.preset) ? '#FFF' : colors.textSecondary} />
+                                <Text style={[styles.segmentText, { color: colors.textSecondary }, ['default', 'ocean', 'sunset', 'forest', 'rose', 'minimal_light'].includes(settings.preset) && { color: '#FFF' }]}>Jasny</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.segmentBtn, ['dark', 'purple', 'nord', 'cyberpunk', 'minimal_dark'].includes(settings.preset) && { backgroundColor: colors.primary }]}
+                                onPress={() => handleThemeSelect('dark')}
+                            >
+                                <Ionicons name="moon-outline" size={20} color={['dark', 'purple', 'nord', 'cyberpunk', 'minimal_dark'].includes(settings.preset) ? '#FFF' : colors.textSecondary} />
+                                <Text style={[styles.segmentText, { color: colors.textSecondary }, ['dark', 'purple', 'nord', 'cyberpunk', 'minimal_dark'].includes(settings.preset) && { color: '#FFF' }]}>Ciemny</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={[styles.controlLabel, { color: colors.textSecondary, marginTop: Spacing.md, marginBottom: Spacing.sm }]}>Opcje Premium</Text>
                         <View style={styles.themesGrid}>
                             {themePresets.map((preset, index) => (
                                 <TouchableOpacity
@@ -510,6 +531,26 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
     },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg },
     sectionTitle: { fontSize: scaleFont(17), fontWeight: '700', letterSpacing: -0.3, fontFamily },
+    segmentedControl: {
+        flexDirection: 'row',
+        padding: 4,
+        borderRadius: BorderRadius.lg,
+        marginBottom: Spacing.md,
+    },
+    segmentBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        gap: Spacing.sm,
+        borderRadius: BorderRadius.md - 2,
+    },
+    segmentText: {
+        fontSize: scaleFont(14),
+        fontWeight: '600',
+        fontFamily,
+    },
     themesGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',

@@ -184,6 +184,29 @@ export default function Home() {
 
   const monthResult = (stats?.month_income || 0) - (stats?.month_expenses || 0);
 
+  // Calculate Today's Expenses
+  const todayDateString = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD local format
+  const todayExpenses = useMemo(() => {
+    return transactions
+      .filter((t: Transaction) => t.type === 'expense' && t.created_at.startsWith(todayDateString))
+      .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+  }, [transactions, todayDateString]);
+
+  const getInsightMessage = () => {
+    if (!stats) return null;
+    const { month_income, month_expenses } = stats;
+    if (month_income === 0 && month_expenses === 0) return null;
+    if (month_income > 0 && month_expenses >= month_income * 0.8) {
+      return { text: "Wydatki zbliżają się do przychodów. Czas zwolnić!", type: "warning", icon: "warning-outline" };
+    }
+    if (month_income > 0 && month_expenses < month_income * 0.3) {
+      return { text: "Świetnie zarządzasz budżetem w tym miesiącu!", type: "positive", icon: "star-outline" };
+    }
+    return { text: "Pamiętaj o celach! Małe kroki robią różnicę.", type: "neutral", icon: "bulb-outline" };
+  };
+
+  const insight = getInsightMessage();
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {settings.wallpaper && <WallpaperBackground wallpaper={settings.wallpaper} />}
@@ -209,9 +232,18 @@ export default function Home() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* ── Balance Card — Flat & Clean ── */}
+        {/* ── Balance Card — Premium Dashboard ── */}
         <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Saldo łączne</Text>
+          <View style={styles.balanceHeader}>
+            <Text style={styles.balanceLabel}>SALDO ŁĄCZNE</Text>
+            {todayExpenses > 0 && (
+              <View style={[styles.todayBadge, { backgroundColor: `${colors.expense}15` }]}>
+                <Text style={[styles.todayBadgeText, { color: colors.expense }]}>
+                  Dzisiaj: -{formatMoney(todayExpenses)}
+                </Text>
+              </View>
+            )}
+          </View>
           <AnimatedNumber
             value={stats?.total_balance || 0}
             formatter={(value) => formatMoney(value)}
@@ -241,26 +273,18 @@ export default function Home() {
           </View>
         </Animated.View>
 
-        {/* ── Quick Actions — Horizontal Scroll ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Szybkie akcje</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickActionsScroll}
-          >
-            {quickActions.map((action, index) => (
-              <Animated.View key={action.id} entering={FadeInRight.delay(150 + index * 60).duration(400)}>
-                <AnimatedButton style={styles.quickActionPill} onPress={action.onPress} hapticFeedback="light">
-                  <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}14` }]}>
-                    <Ionicons name={action.icon} size={18} color={action.color} />
-                  </View>
-                  <Text style={styles.quickActionLabel}>{action.label}</Text>
-                </AnimatedButton>
-              </Animated.View>
-            ))}
-          </ScrollView>
-        </View>
+        {/* ── Insight Banner ── */}
+        {insight && (
+          <Animated.View entering={FadeInDown.delay(150).duration(500)} style={[
+            styles.insightBanner,
+            { backgroundColor: insight.type === 'positive' ? colors.income + '15' : insight.type === 'warning' ? colors.expense + '15' : colors.primary + '15' }
+          ]}>
+            <Ionicons name={insight.icon as any} size={20} color={insight.type === 'positive' ? colors.income : insight.type === 'warning' ? colors.expense : colors.primary} />
+            <Text style={[styles.insightText, { color: insight.type === 'positive' ? colors.income : insight.type === 'warning' ? colors.expense : colors.primary }]}>
+              {insight.text}
+            </Text>
+          </Animated.View>
+        )}
 
         {/* ── Subscriptions ── */}
         <View style={styles.section}>
@@ -346,8 +370,37 @@ export default function Home() {
           </View>
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* ── Floating Quick Actions Dock ── */}
+      <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.floatingDockWrapper}>
+        <View style={[styles.floatingDock, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          {quickActions.map((action) => {
+            const isAdd = action.id === 'add';
+            return (
+              <TouchableOpacity
+                key={action.id}
+                style={styles.dockButton}
+                onPress={action.onPress}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.dockIconWrap,
+                  isAdd && { backgroundColor: colors.primary, width: 48, height: 48, borderRadius: 24, marginTop: -20, ...Elevation.level3 }
+                ]}>
+                  <Ionicons
+                    name={action.icon}
+                    size={isAdd ? 28 : 22}
+                    color={isAdd ? '#FFF' : colors.textSecondary}
+                  />
+                </View>
+                {!isAdd && <Text style={[styles.dockLabel, { color: colors.textSecondary }]}>{action.label}</Text>}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Animated.View>
 
       <WorkCalculatorModal
         visible={showCalculator}
@@ -452,12 +505,26 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       borderColor: colors.borderLight,
       ...Elevation.level2,
     },
+    balanceHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
     balanceLabel: {
       fontSize: scaleFont(12),
       color: colors.textMuted,
-      fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
+      fontWeight: '700',
+      letterSpacing: 1.2,
+      fontFamily,
+    },
+    todayBadge: {
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 4,
+      borderRadius: BorderRadius.pill,
+    },
+    todayBadgeText: {
+      fontSize: scaleFont(11),
+      fontWeight: '700',
       fontFamily,
     },
     balanceValue: {
@@ -491,6 +558,25 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       borderRadius: 1.5,
       backgroundColor: colors.border,
       marginHorizontal: Spacing.sm,
+    },
+
+    /* ── Insight Banner ── */
+    insightBanner: {
+      marginHorizontal: Spacing.xl,
+      marginBottom: Spacing.xl,
+      marginTop: -Spacing.md, // pull up slightly towards balance card
+      padding: Spacing.md,
+      borderRadius: BorderRadius.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    insightText: {
+      flex: 1,
+      fontSize: scaleFont(13),
+      fontWeight: '600',
+      fontFamily,
+      letterSpacing: -0.2,
     },
 
     /* ── Sections ── */
@@ -658,6 +744,41 @@ const getStyles = (colors: any, fontFamily: string | undefined, scaleFont: (size
       fontSize: scaleFont(15),
       fontWeight: '700',
       letterSpacing: -0.2,
+      fontFamily,
+    },
+    /* ── Floating Dock ── */
+    floatingDockWrapper: {
+      position: 'absolute',
+      bottom: Spacing.lg,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+    },
+    floatingDock: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-evenly',
+      width: '90%',
+      height: 64,
+      borderRadius: 32,
+      borderWidth: 1,
+      ...Elevation.level3,
+      paddingHorizontal: Spacing.md,
+    },
+    dockButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: Spacing.sm,
+      height: '100%',
+    },
+    dockIconWrap: {
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    dockLabel: {
+      fontSize: scaleFont(10),
+      marginTop: 4,
+      fontWeight: '600',
       fontFamily,
     },
   });

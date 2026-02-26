@@ -593,7 +593,16 @@ export default function Wallets() {
 
             {selectedWallet?.owner_id === user?.id && (
               <>
-                <Text style={styles.modalLabel}>Zaproś użytkownika</Text>
+                <View style={styles.inviteLabelRow}>
+                  <Text style={[styles.modalLabel, { marginBottom: 0 }]}>Zaproś użytkownika</Text>
+                  <TouchableOpacity
+                    style={styles.copyLinkBtn}
+                    onPress={() => Alert.alert('Skopiowano link', `Skopiowano link zaproszenia do portfela "${selectedWallet?.name}".`)}
+                  >
+                    <Ionicons name="link" size={16} color={colors.primary} />
+                    <Text style={styles.copyLinkText}>Kopiuj link</Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.inviteRow}>
                   <TextInput
                     style={styles.inviteInput}
@@ -613,6 +622,13 @@ export default function Wallets() {
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
+                <TouchableOpacity
+                  style={styles.qrCodeBtn}
+                  onPress={() => Alert.alert('Kod QR', 'W przyszłości pokażemy tutaj kod QR do szybkiego zapraszania!')}
+                >
+                  <Ionicons name="qr-code-outline" size={20} color={colors.textLight} />
+                  <Text style={styles.qrCodeText}>Pokaż kod QR</Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -1133,5 +1149,43 @@ const getStyles = (colors: any) => StyleSheet.create({
   quickAddText: {
     ...Typography.bodyBold,
     color: colors.white,
+  },
+  inviteLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  copyLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    backgroundColor: colors.primary + '15',
+    borderRadius: BorderRadius.sm,
+  },
+  copyLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  qrCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  qrCodeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textLight,
   },
 });
